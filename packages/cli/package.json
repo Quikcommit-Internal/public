@@ -1,6 +1,6 @@
 {
   "name": "@quikcommit/cli",
-  "version": "3.1.0",
+  "version": "4.0.0",
   "description": "AI-powered conventional commit messages",
   "bin": {
     "qc": "./dist/index.js"
@@ -38,6 +38,6 @@
     "@types/node": "^22.0.0",
     "esbuild": "^0.27.3",
     "typescript": "^5.9.3",
-    "vitest": "~4.0.18"
+    "vitest": "^4.0.18"
   }
 }
