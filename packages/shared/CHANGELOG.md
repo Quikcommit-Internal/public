@@ -1,5 +1,11 @@
 # @quikcommit/shared
 
+## 4.1.0
+
+### Minor Changes
+
+- [#10](https://github.com/Quikcommit-Internal/quikcommit/pull/10) [`6a1f253`](https://github.com/Quikcommit-Internal/quikcommit/commit/6a1f253fd2ed2112c1d650de589a4ab51d74367f) Thanks [@foundquik](https://github.com/foundquik)! - Updated docs, fixed Wrangler setup, and more
+
 ## 4.0.0
 
 ### Major Changes
