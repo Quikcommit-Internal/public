@@ -1,6 +1,6 @@
 # Architecture
 
-Technical overview of how QuikCommit is built and how its components interact.
+Technical overview of how Quikcommit is built and how its components interact.
 
 ---
 

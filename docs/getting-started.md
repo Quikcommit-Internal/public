@@ -1,6 +1,6 @@
-# Getting Started with QuikCommit
+# Getting Started with Quikcommit
 
-QuikCommit (`qc`) is an AI-powered CLI that generates [Conventional Commits](https://www.conventionalcommits.org/) from your staged git diff. It takes seconds to set up and works in any git repository.
+Quikcommit (`qc`) is an AI-powered CLI that generates [Conventional Commits](https://www.conventionalcommits.org/) from your staged git diff. It takes seconds to set up and works in any git repository.
 
 ---
 
@@ -48,7 +48,7 @@ qc --help
 
 ## 2. Authenticate
 
-QuikCommit uses a browser-based device code flow — no copy-pasting tokens:
+Quikcommit uses a browser-based device code flow — no copy-pasting tokens:
 
 ```bash
 qc login
@@ -75,7 +75,7 @@ git add .          # stage your changes as normal
 qc                 # AI generates and commits
 ```
 
-That's it. QuikCommit reads your staged diff, calls the AI, and runs `git commit` with the generated message.
+That's it. Quikcommit reads your staged diff, calls the AI, and runs `git commit` with the generated message.
 
 ### Preview before committing
 

@@ -1,6 +1,6 @@
 # Commitlint Integration - Comprehensive Guide
 
-This guide provides detailed information about QuikCommit's automatic commitlint integration feature.
+This guide provides detailed information about Quikcommit's automatic commitlint integration feature.
 
 ## Table of Contents
 
@@ -17,11 +17,11 @@ This guide provides detailed information about QuikCommit's automatic commitlint
 
 ## Overview
 
-QuikCommit automatically detects and respects your project's commitlint configuration, ensuring that AI-generated commit messages comply with your project's standards without any additional setup.
+Quikcommit automatically detects and respects your project's commitlint configuration, ensuring that AI-generated commit messages comply with your project's standards without any additional setup.
 
 ### Key Benefits
 
-- **Zero Configuration**: If your project uses commitlint, QuikCommit works immediately
+- **Zero Configuration**: If your project uses commitlint, Quikcommit works immediately
 - **First-Try Success**: Generated commits pass commitlint validation without manual editing
 - **Project Consistency**: Maintains commit message standards across team members
 - **Provider Agnostic**: Works with all AI providers (Ollama, OpenRouter, LMStudio, Custom, Cloudflare)
@@ -53,7 +53,7 @@ The script scans your project directory for commitlint configuration files in pr
 
 ### 2. Extraction Phase
 
-Once a config file is found, QuikCommit extracts enforceable rules:
+Once a config file is found, Quikcommit extracts enforceable rules:
 
 ```json
 {
@@ -268,7 +268,7 @@ module.exports = {
 
 #### `package.yaml` (pnpm)
 
-pnpm uses YAML format for package manifests. QuikCommit supports the `commitlint` field in `package.yaml`, which is common in pnpm workspace configurations.
+pnpm uses YAML format for package manifests. Quikcommit supports the `commitlint` field in `package.yaml`, which is common in pnpm workspace configurations.
 
 **Format Specification:**
 ```yaml
@@ -348,11 +348,11 @@ Where:
 - `applicable`: "always" (rule applies) or "never" (rule is inverted)
 - `value`: The rule configuration (array, string, number, etc.)
 
-QuikCommit extracts rules where `level` is 2 (error) and `applicable` is "always".
+Quikcommit extracts rules where `level` is 2 (error) and `applicable` is "always".
 
 ### Supported Rule Mappings
 
-| Commitlint Rule | QuikCommit Field | Value Type | Description |
+| Commitlint Rule | Quikcommit Field | Value Type | Description |
 |----------------|------------|------------|-------------|
 | `type-enum` | `types` | `string[]` | Allowed commit types |
 | `scope-enum` | `scopes`, `scopeDelimiters` | `string[]` or `object` | Allowed scopes |
@@ -755,7 +755,7 @@ module.exports = {
 };
 ```
 
-QuikCommit extracts the static arrays from this config.
+Quikcommit extracts the static arrays from this config.
 
 ## Troubleshooting Guide
 
@@ -791,7 +791,7 @@ DEBUG: Extracted rules: {...}
 
 4. **Config in subdirectory**
    - **Detection**: No config found
-   - **Solution**: QuikCommit only checks project root; move config to root
+   - **Solution**: Quikcommit only checks project root; move config to root
 
 ### Issue 2: YAML Config Not Working
 
@@ -887,7 +887,7 @@ module.exports = {
 }
 ```
 
-**Why**: QuikCommit doesn't resolve npm packages from `node_modules`.
+**Why**: Quikcommit doesn't resolve npm packages from `node_modules`.
 
 **Solution**: Add explicit rules:
 ```json
@@ -1021,7 +1021,7 @@ jq --version
    - **Why**: Requires npm package resolution
    - **Workaround**: Add explicit rules to config
    - **Example**: Can't resolve `@commitlint/config-conventional` from node_modules
-   - **Important**: When using `extends`, values from extended configs are NOT extracted. Only explicit rules are used, and QuikCommit defaults fill in the rest.
+   - **Important**: When using `extends`, values from extended configs are NOT extracted. Only explicit rules are used, and Quikcommit defaults fill in the rest.
 
 4. **No Imports/Requires**
    - **Why**: Can't resolve external dependencies
@@ -1039,7 +1039,7 @@ jq --version
 
 ### Commitlint Rule Limitations
 
-Not all commitlint rules are extracted/enforced. QuikCommit provides **core rule compliance** covering the 9 most common rules:
+Not all commitlint rules are extracted/enforced. Quikcommit provides **core rule compliance** covering the 9 most common rules:
 
 **✅ Extracted and Enforced (9 Core Rules)**:
 - `type-enum` - Allowed commit types
@@ -1066,16 +1066,16 @@ Not all commitlint rules are extracted/enforced. QuikCommit provides **core rule
 
 1. **headerMaxLength Default Behavior:**
    - `@commitlint/config-conventional` uses **100** as the default headerMaxLength
-   - QuikCommit uses **72** as fallback when no config found (following Git's 50/72 rule)
-   - If your project extends `@commitlint/config-conventional` without an explicit `header-max-length` rule, QuikCommit will use **72** (its default), NOT 100 from the extended config
-   - **Why**: QuikCommit does not resolve the `extends` field - only explicit rules are extracted
+   - Quikcommit uses **72** as fallback when no config found (following Git's 50/72 rule)
+   - If your project extends `@commitlint/config-conventional` without an explicit `header-max-length` rule, Quikcommit will use **72** (its default), NOT 100 from the extended config
+   - **Why**: Quikcommit does not resolve the `extends` field - only explicit rules are extracted
    - **Solution**: To use 100 characters, explicitly set: `"header-max-length": [2, "always", 100]`
 
 2. **subjectCase Semantics:**
    - The rule uses `'never'` (prohibited cases) or `'always'` (allowed cases) semantics
    - `@commitlint/config-conventional` uses: `["subject-case", [2, "never", ["sentence-case", "start-case", "pascal-case", "upper-case"]]]`
    - This means these cases are **PROHIBITED** (subjects should be lowercase)
-   - **Known Limitation**: QuikCommit's current implementation stores the case list but may not correctly enforce the 'never' semantic
+   - **Known Limitation**: Quikcommit's current implementation stores the case list but may not correctly enforce the 'never' semantic
    - The AI is instructed to use appropriate case, but the 'never' vs 'always' distinction may not be fully respected
    - **Best Practice**: Use explicit 'always' rules for clearer enforcement: `"subject-case": [2, "always", "lower-case"]`
 
@@ -1271,7 +1271,7 @@ DEBUG: Scanning for commitlint config...
 DEBUG: Found config: .commitlintrc.ts
 DEBUG: Warning: TypeScript config found but skipped (compilation not supported)
 DEBUG: Continuing search for alternative config formats...
-DEBUG: No parseable config found, using QuikCommit defaults
+DEBUG: No parseable config found, using Quikcommit defaults
 ```
 
 **Example Debug Output (YAML Without yq):**
@@ -1308,13 +1308,13 @@ git add .commitlintrc.json
 git commit -m "chore: add commitlint configuration"
 ```
 
-This ensures all team members (and QuikCommit) use the same rules.
+This ensures all team members (and Quikcommit) use the same rules.
 
 ## Security Considerations
 
 ### Config File Parsing
 
-QuikCommit uses safe parsing techniques to prevent security vulnerabilities:
+Quikcommit uses safe parsing techniques to prevent security vulnerabilities:
 
 **Safe Operations:**
 - ✅ Only static JavaScript arrays parsed (no code execution)
@@ -1462,7 +1462,7 @@ If your team uses non-standard types:
 
 ### Husky Integration
 
-QuikCommit works alongside Husky hooks:
+Quikcommit works alongside Husky hooks:
 
 **.husky/commit-msg**:
 ```bash
@@ -1496,11 +1496,11 @@ jobs:
         uses: wagoid/commitlint-github-action@v5
 ```
 
-QuikCommit-generated commits will pass this validation.
+Quikcommit-generated commits will pass this validation.
 
 ### Multiple Config Files (Priority)
 
-If multiple configs exist, QuikCommit uses the first found:
+If multiple configs exist, Quikcommit uses the first found:
 
 **Example Project**:
 ```
@@ -1586,7 +1586,7 @@ Planned improvements:
 
 - [Commitlint Documentation](https://commitlint.js.org/)
 - [Conventional Commits Specification](https://www.conventionalcommits.org/)
-- [QuikCommit Design Document](/docs/plans/2026-01-26-commitlint-integration-design.md)
+- [Quikcommit Design Document](/docs/plans/2026-01-26-commitlint-integration-design.md)
 
 ## References
 

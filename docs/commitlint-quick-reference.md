@@ -1,11 +1,11 @@
 # Commitlint Integration - Quick Reference
 
-> One-page reference for QuikCommit's commitlint integration feature
+> One-page reference for Quikcommit's commitlint integration feature
 
 ## Quick Start
 
 ```bash
-# If you already have commitlint configured, QuikCommit just works!
+# If you already have commitlint configured, Quikcommit just works!
 qc
 
 # Check what rules are detected
@@ -52,7 +52,7 @@ qc --debug --message-only
 | `subject-full-stop` | Punctuation to avoid | `"."` | ✅ Extracted |
 | `scope-empty` | Whether scopes required/forbidden | N/A | ⏳ Planned |
 
-**Note:** QuikCommit provides **core rule compliance** covering the 9 most common rules. The `scope-empty` rule is not yet extracted but planned for future support.
+**Note:** Quikcommit provides **core rule compliance** covering the 9 most common rules. The `scope-empty` rule is not yet extracted but planned for future support.
 
 ## Example Configurations
 
@@ -194,15 +194,15 @@ If no commitlint config is found, these defaults apply:
 
 1. **headerMaxLength Default:**
    - `@commitlint/config-conventional` uses **100** characters
-   - QuikCommit uses **72** characters (Git's 50/72 rule)
-   - If you extend `@commitlint/config-conventional` without explicit `header-max-length`, QuikCommit will use **72** (not 100)
-   - Why: QuikCommit doesn't resolve `extends` - only explicit rules are used
+   - Quikcommit uses **72** characters (Git's 50/72 rule)
+   - If you extend `@commitlint/config-conventional` without explicit `header-max-length`, Quikcommit will use **72** (not 100)
+   - Why: Quikcommit doesn't resolve `extends` - only explicit rules are used
    - Solution: Add explicit rule: `"header-max-length": [2, "always", 100]`
 
 2. **subjectCase Semantics:**
    - Rules use `'never'` (prohibited) or `'always'` (allowed)
    - `@commitlint/config-conventional` prohibits certain cases (using `'never'`)
-   - **Known limitation**: QuikCommit may not fully respect `'never'` semantic
+   - **Known limitation**: Quikcommit may not fully respect `'never'` semantic
    - Best practice: Use explicit `'always'` rules: `"subject-case": [2, "always", "lower-case"]`
 
 ## Testing Your Config

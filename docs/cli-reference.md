@@ -179,7 +179,7 @@ qc init --uninstall # remove hook
 
 | Flag | Description |
 |------|-------------|
-| `--uninstall` | Remove the QuikCommit hook |
+| `--uninstall` | Remove the Quikcommit hook |
 
 **How it works:**
 
@@ -189,7 +189,7 @@ After running `qc init`, every `git commit` invocation will:
 3. Pre-fill the commit editor with the generated message
 4. Let you edit or accept before saving
 
-The hook will not overwrite an existing hook that wasn't installed by QuikCommit.
+The hook will not overwrite an existing hook that wasn't installed by Quikcommit.
 
 ---
 
@@ -214,7 +214,7 @@ qc team rules          # show team rules
 qc team rules --push   # push local commitlint config to team
 ```
 
-QuikCommit reads your local commitlint config automatically from any of:
+Quikcommit reads your local commitlint config automatically from any of:
 - `.commitlintrc.json` / `.commitlintrc.js` / `.commitlintrc.cjs`
 - `.commitlintrc.yaml` / `.commitlintrc.yml`
 - `commitlint.config.js`

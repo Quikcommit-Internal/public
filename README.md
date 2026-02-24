@@ -1,4 +1,4 @@
-# QuikCommit
+# Quikcommit
 
 AI-powered conventional commit messages for every developer on your team.
 

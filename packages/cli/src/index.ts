@@ -10,7 +10,7 @@ import {
 } from "./git.js";
 import { detectWorkspace, autoDetectScope } from "./monorepo.js";
 
-const HELP = `QuikCommit - AI-powered conventional commit messages
+const HELP = `Quikcommit - AI-powered conventional commit messages
 
 Usage:
   qc                    Generate commit message and commit (default)
@@ -36,7 +36,7 @@ Options:
   --to <ref>            End ref for qc changelog (default: HEAD)
   --write               Prepend changelog to CHANGELOG.md
   --version <ver>       Version label for changelog header (default: derived from --to or "<from>-next")
-  --uninstall           Remove QuikCommit hook (qc init --uninstall)
+  --uninstall           Remove Quikcommit hook (qc init --uninstall)
   --model <id>          Use specific model (e.g. qwen25-coder-32b, llama-3.3-70b)
 
 Commands:

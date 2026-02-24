@@ -1,6 +1,6 @@
 # Configuration
 
-QuikCommit stores all configuration in `~/.config/qc/`.
+Quikcommit stores all configuration in `~/.config/qc/`.
 
 ---
 
@@ -107,7 +107,7 @@ qc config set excludes "*.lock,dist/"
 
 ### Built-in excludes (always applied)
 
-QuikCommit automatically strips these from diffs regardless of config:
+Quikcommit automatically strips these from diffs regardless of config:
 - Lock files: `pnpm-lock.yaml`, `yarn.lock`, `package-lock.json`, `bun.lockb`, `Cargo.lock`
 - Build output: `dist/`, `build/`, `.next/`, `out/`
 - Minified assets: `*.min.js`, `*.min.css`
@@ -150,7 +150,7 @@ QC_API_KEY=${{ secrets.QC_API_KEY }} qc --message-only
 
 ## Monorepo / Workspace Detection
 
-QuikCommit automatically detects monorepo workspaces and sets the commit scope based on which packages have staged changes.
+Quikcommit automatically detects monorepo workspaces and sets the commit scope based on which packages have staged changes.
 
 Supported workspace formats:
 - `pnpm-workspace.yaml`

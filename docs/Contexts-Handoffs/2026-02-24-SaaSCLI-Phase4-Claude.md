@@ -1,4 +1,4 @@
-# Context Handoff — QuikCommit SaaS CLI Phase 4
+# Context Handoff — Quikcommit SaaS CLI Phase 4
 **Date:** 2026-02-24
 **Agent:** Claude (Sonnet 4.6)
 **Branch at handoff:** `main`
@@ -8,7 +8,7 @@
 
 ## 1. Project Overview
 
-QuikCommit (`qc`) is an AI-powered CLI that generates [Conventional Commits](https://www.conventionalcommits.org/) from staged git diffs. It ships as:
+Quikcommit (`qc`) is an AI-powered CLI that generates [Conventional Commits](https://www.conventionalcommits.org/) from staged git diffs. It ships as:
 
 - **`@quikcommit/cli`** — the public npm package / standalone binary (`qc`)
 - **`@quikcommit/shared`** — shared types, constants, model catalog (npm public)

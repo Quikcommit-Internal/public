@@ -1,6 +1,6 @@
 # Teams
 
-QuikCommit Teams let your entire organization share commit conventions, ensuring consistent commit messages across every developer's machine.
+Quikcommit Teams let your entire organization share commit conventions, ensuring consistent commit messages across every developer's machine.
 
 **Requires:** Team plan or higher.
 
@@ -48,7 +48,7 @@ Commit rules:
 qc team rules --push
 ```
 
-QuikCommit reads your local commitlint configuration automatically from any of these files (in order):
+Quikcommit reads your local commitlint configuration automatically from any of these files (in order):
 
 1. `.commitlintrc.json`
 2. `.commitlintrc.js` / `.commitlintrc.cjs`
@@ -97,7 +97,7 @@ Team rules > Local rules > No rules (Conventional Commits defaults)
 
 ## Monorepo + Team Rules
 
-In a monorepo, QuikCommit combines workspace scope detection with team rules:
+In a monorepo, Quikcommit combines workspace scope detection with team rules:
 
 - Staged files in `packages/api/` → detected scope: `api`
 - Team rules allow scopes: `["api", "ui", "auth", "infra"]`

@@ -1,7 +1,7 @@
 import { defineConfig } from "vitepress";
 
 export default defineConfig({
-  title: "QuikCommit",
+  title: "Quikcommit",
   description: "AI-powered conventional commit messages",
   base: "/",
   themeConfig: {

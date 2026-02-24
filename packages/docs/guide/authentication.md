@@ -1,6 +1,6 @@
 # Authentication
 
-QuikCommit uses the SaaS API for AI generation. Sign in once and your credentials are stored locally.
+Quikcommit uses the SaaS API for AI generation. Sign in once and your credentials are stored locally.
 
 ## Login
 

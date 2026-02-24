@@ -1,6 +1,6 @@
 # Development Guide
 
-How to set up the QuikCommit monorepo locally, run tests, and contribute.
+How to set up the Quikcommit monorepo locally, run tests, and contribute.
 
 ---
 

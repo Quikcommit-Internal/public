@@ -1,6 +1,6 @@
 # Commit Messages
 
-QuikCommit generates conventional commit messages from your staged changes.
+Quikcommit generates conventional commit messages from your staged changes.
 
 ## Usage
 

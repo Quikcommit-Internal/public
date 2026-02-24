@@ -3,7 +3,7 @@ import { join } from "path";
 import { execFileSync } from "child_process";
 
 const HOOK_CONTENT = `#!/bin/sh
-# QuikCommit - auto-generate commit messages
+# Quikcommit - auto-generate commit messages
 # Installed by: qc init
 # Remove with: qc init --uninstall
 
@@ -46,11 +46,11 @@ export function init(options: { uninstall?: boolean }): void {
   if (options.uninstall) {
     if (existsSync(hookPath)) {
       const content = readFileSync(hookPath, "utf-8");
-      if (content.includes("QuikCommit")) {
+      if (content.includes("Quikcommit")) {
         unlinkSync(hookPath);
-        console.log("QuikCommit hook removed.");
+        console.log("Quikcommit hook removed.");
       } else {
-        console.log("Hook exists but was not installed by QuikCommit. Skipping.");
+        console.log("Hook exists but was not installed by Quikcommit. Skipping.");
       }
     } else {
       console.log("No hook to remove.");
@@ -60,8 +60,8 @@ export function init(options: { uninstall?: boolean }): void {
 
   if (existsSync(hookPath)) {
     const content = readFileSync(hookPath, "utf-8");
-    if (content.includes("QuikCommit")) {
-      console.log("QuikCommit hook is already installed.");
+    if (content.includes("Quikcommit")) {
+      console.log("Quikcommit hook is already installed.");
       return;
     }
     console.error(
@@ -72,6 +72,6 @@ export function init(options: { uninstall?: boolean }): void {
 
   writeFileSync(hookPath, HOOK_CONTENT);
   chmodSync(hookPath, 0o755);
-  console.log("QuikCommit hook installed.");
+  console.log("Quikcommit hook installed.");
   console.log("Now just run `git commit` and a message will be generated automatically.");
 }

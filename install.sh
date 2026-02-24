@@ -1,5 +1,5 @@
 #!/bin/bash
-# QuikCommit SaaS CLI install script
+# Quikcommit SaaS CLI install script
 # Usage: curl -fsSL https://quikcommit.dev/install | sh
 
 set -e
@@ -20,10 +20,10 @@ fi
 
 # Check for bun or node
 if command -v bun >/dev/null 2>&1; then
-    echo "Installing QuikCommit via npm (using bun)..."
+    echo "Installing Quikcommit via npm (using bun)..."
     npm install -g @quikcommit/cli
 elif command -v node >/dev/null 2>&1; then
-    echo "Installing QuikCommit via npm..."
+    echo "Installing Quikcommit via npm..."
     npm install -g @quikcommit/cli
 else
     echo "Error: Neither bun nor node found. Please install Node.js (https://nodejs.org) or Bun (https://bun.sh) first."

@@ -1,4 +1,4 @@
-# QuikCommit
+# Quikcommit
 
 AI-powered conventional commit messages. Generate commit messages, PR descriptions, and changelogs with a single command.
 

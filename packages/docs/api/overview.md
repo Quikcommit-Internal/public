@@ -1,6 +1,6 @@
 # API Overview
 
-The QuikCommit API is RESTful and uses Bearer token authentication.
+The Quikcommit API is RESTful and uses Bearer token authentication.
 
 **Base URL:** `https://api.quikcommit.dev`
 

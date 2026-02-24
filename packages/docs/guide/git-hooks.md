@@ -8,7 +8,7 @@ Automatically generate commit messages when you run `git commit`.
 qc init
 ```
 
-This installs a `prepare-commit-msg` hook that runs QuikCommit before each commit. You'll see the generated message in your editor and can edit it before saving.
+This installs a `prepare-commit-msg` hook that runs Quikcommit before each commit. You'll see the generated message in your editor and can edit it before saving.
 
 ## Uninstall
 

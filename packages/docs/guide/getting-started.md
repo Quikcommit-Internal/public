@@ -25,7 +25,7 @@ git add .
 qc
 ```
 
-QuikCommit analyzes your staged changes and generates a conventional commit message, then commits for you.
+Quikcommit analyzes your staged changes and generates a conventional commit message, then commits for you.
 
 ## Next Steps
 

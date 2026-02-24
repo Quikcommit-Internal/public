@@ -1,6 +1,6 @@
 # Local Providers
 
-Use QuikCommit without a SaaS subscription by pointing it at a local or self-hosted AI provider. No API key required.
+Use Quikcommit without a SaaS subscription by pointing it at a local or self-hosted AI provider. No API key required.
 
 ---
 
@@ -15,7 +15,7 @@ Use QuikCommit without a SaaS subscription by pointing it at a local or self-hos
    # or for better results:
    ollama pull qwen2.5-coder
    ```
-3. Configure QuikCommit:
+3. Configure Quikcommit:
    ```bash
    qc --use-ollama
    ```
@@ -31,7 +31,7 @@ Use QuikCommit without a SaaS subscription by pointing it at a local or self-hos
 ### LM Studio
 
 1. Install [LM Studio](https://lmstudio.ai) and start the local server
-2. Configure QuikCommit:
+2. Configure Quikcommit:
    ```bash
    qc --use-lmstudio
    ```
@@ -121,7 +121,7 @@ qc login
 
 | Provider | Cost | Privacy | Speed | Code Quality |
 |----------|------|---------|-------|-------------|
-| QuikCommit SaaS | Subscription | Cloud | Fast | Excellent |
+| Quikcommit SaaS | Subscription | Cloud | Fast | Excellent |
 | Ollama (local) | Free | Local | Medium | Good |
 | LM Studio (local) | Free | Local | Medium | Good |
 | OpenRouter | Pay-per-use | Cloud | Fast | Varies by model |
