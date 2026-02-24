@@ -27,7 +27,8 @@
     "typecheck": "tsc --noEmit",
     "start": "node dist/index.js",
     "test": "vitest run",
-    "lint": "echo 'no linter configured'"
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix"
   },
   "publishConfig": {
     "access": "public"

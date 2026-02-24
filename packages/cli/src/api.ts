@@ -46,12 +46,11 @@ export class ApiClient {
     });
 
     if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: res.statusText }));
-      const code = (err as { code?: string }).code;
-      if (planRequiredMsg && code === "PLAN_REQUIRED") {
+      const err = (await res.json().catch(() => ({ error: res.statusText }))) as { error?: string; code?: string };
+      if (planRequiredMsg && err.code === "PLAN_REQUIRED") {
         throw new Error(planRequiredMsg);
       }
-      throw new Error((err as { error?: string }).error ?? `HTTP ${res.status}`);
+      throw new Error(err.error ?? `HTTP ${res.status}`);
     }
 
     return res.json() as Promise<T>;
@@ -116,8 +115,8 @@ export class ApiClient {
       body: options?.body,
     });
     if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: res.statusText }));
-      throw new Error((err as { error?: string }).error ?? `HTTP ${res.status}`);
+      const err = (await res.json().catch(() => ({ error: res.statusText }))) as { error?: string };
+      throw new Error(err.error ?? `HTTP ${res.status}`);
     }
     return res.json() as Promise<T>;
   }

@@ -2,7 +2,7 @@ import { getConfig, saveConfig, getApiKey } from "../config.js";
 import { DEFAULT_API_URL } from "@quikcommit/shared";
 import type { LocalConfig } from "../config.js";
 
-export async function config(args: string[]): Promise<void> {
+export function config(args: string[]): void {
   if (args.length === 0) {
     showConfig();
     return;
@@ -17,7 +17,7 @@ export async function config(args: string[]): Promise<void> {
       console.error("  Keys: model, api_url, provider");
       process.exit(1);
     }
-    await setConfig(key, value);
+    setConfig(key, value);
     return;
   }
 
@@ -44,7 +44,7 @@ function showConfig(): void {
   }
 }
 
-async function setConfig(key: string, value: string): Promise<void> {
+function setConfig(key: string, value: string): void {
   const cfg = getConfig();
   const updates: Partial<LocalConfig> = {};
 

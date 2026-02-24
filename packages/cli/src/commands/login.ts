@@ -40,8 +40,8 @@ export async function runLogin(): Promise<void> {
   });
 
   if (!startRes.ok) {
-    const err = await startRes.json().catch(() => ({ error: startRes.statusText }));
-    throw new Error((err as { error?: string }).error ?? "Failed to start device flow");
+    const err = (await startRes.json().catch(() => ({ error: startRes.statusText }))) as { error?: string };
+    throw new Error(err.error ?? "Failed to start device flow");
   }
 
   const startData = (await startRes.json()) as { device_code?: string; status?: string };

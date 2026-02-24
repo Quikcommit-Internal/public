@@ -44,6 +44,7 @@ export function sanitizeRules(rules: unknown): CommitRules | undefined {
           typeof s === "string" &&
           s.length > 0 &&
           s.length <= 5 &&
+          // eslint-disable-next-line no-control-regex -- intentional null byte filtering for security
           !/[\n\r\x00]/.test(s)
       );
   }
@@ -60,11 +61,13 @@ export function sanitizeRules(rules: unknown): CommitRules | undefined {
       );
   }
 
-  const isValidCaseValue = (s: string): boolean =>
+  // eslint-disable-next-line no-control-regex -- intentional null byte filtering for security
+  const caseValuePattern = /[\n\r\x00]/;
+  const isValidCaseValue = (s: unknown): s is string =>
     typeof s === "string" &&
     s.length > 0 &&
     s.length <= 50 &&
-    !/[\n\r\x00]/.test(s);
+    !caseValuePattern.test(s);
 
   if (typeof r.typeCase === "string" && isValidCaseValue(r.typeCase)) {
     sanitized.typeCase = r.typeCase;

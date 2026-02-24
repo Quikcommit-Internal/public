@@ -9,7 +9,6 @@ import { homedir } from "os";
 import {
   getConfig,
   getApiKey,
-  type LocalConfig,
   type LocalProvider,
 } from "./config.js";
 import { CONFIG_DIR } from "@quikcommit/shared";
@@ -89,7 +88,7 @@ export function getLocalProviderConfig(): {
 } | null {
   const config = getConfig();
   const provider =
-    (config.provider as LocalProvider | undefined) ?? getLegacyProvider();
+    (config.provider) ?? getLegacyProvider();
   if (!provider) return null;
 
   const baseUrl =
@@ -200,7 +199,7 @@ function buildRequest(
       body = { diff, changes, rules };
       return { url, body, headers: { "Content-Type": "application/json" } };
     default:
-      throw new Error(`Unknown provider: ${provider}`);
+      throw new Error(`Unknown provider: ${provider as string}`);
   }
 }
 

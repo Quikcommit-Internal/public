@@ -284,7 +284,7 @@ async function main(): Promise<void> {
 
   if (command === "init") {
     const { init } = await import("./commands/init.js");
-    await init({ uninstall: values.uninstall });
+    init({ uninstall: values.uninstall });
     return;
   }
 
@@ -298,7 +298,7 @@ async function main(): Promise<void> {
   if (command === "config") {
     const { config } = await import("./commands/config.js");
     const positionals = argv.filter((a) => !a.startsWith("-") && a !== "config");
-    await config(positionals);
+    config(positionals);
     return;
   }
 

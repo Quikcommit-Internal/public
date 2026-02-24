@@ -14,7 +14,7 @@ function mapCommitlintToRules(config: unknown): CommitRules | null {
   const c = config as Record<string, unknown>;
   const rules: CommitRules = {};
 
-  const ext = c.extends as string[] | undefined;
+  const _ext = c.extends as string[] | undefined;
   const rulesConfig = c.rules as Record<string, unknown> | undefined;
 
   // Commitlint format: [level, applicability, value] — index 2 is the value

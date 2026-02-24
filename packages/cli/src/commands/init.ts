@@ -30,7 +30,7 @@ if [ $? -eq 0 ] && [ -n "$MSG" ]; then
 fi
 `;
 
-export async function init(options: { uninstall?: boolean }): Promise<void> {
+export function init(options: { uninstall?: boolean }): void {
   let hooksDir: string;
   try {
     hooksDir = execFileSync("git", ["rev-parse", "--git-path", "hooks"], {

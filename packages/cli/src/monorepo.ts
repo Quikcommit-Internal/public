@@ -37,7 +37,7 @@ export function detectWorkspace(cwd: string = findGitRoot(process.cwd())): Works
   const lerna = join(cwd, "lerna.json");
   if (existsSync(lerna)) {
     try {
-      const config = JSON.parse(readFileSync(lerna, "utf-8"));
+      const config = JSON.parse(readFileSync(lerna, "utf-8")) as { packages?: string[] };
       return {
         type: "lerna",
         packages: config.packages ?? ["packages/*"],
@@ -60,9 +60,11 @@ export function detectWorkspace(cwd: string = findGitRoot(process.cwd())): Works
     const pkgPath = join(cwd, "package.json");
     if (existsSync(pkgPath)) {
       try {
-        const config = JSON.parse(readFileSync(pkgPath, "utf-8"));
+        const config = JSON.parse(readFileSync(pkgPath, "utf-8")) as {
+          workspaces?: string[] | { packages?: string[] };
+        };
         if (config.workspaces) {
-          const ws = Array.isArray(config.workspaces)
+          const ws: string[] = Array.isArray(config.workspaces)
             ? config.workspaces
             : config.workspaces.packages ?? [];
           return { type: "turbo", packages: ws, root: cwd };
@@ -76,9 +78,11 @@ export function detectWorkspace(cwd: string = findGitRoot(process.cwd())): Works
   const pkgPath = join(cwd, "package.json");
   if (existsSync(pkgPath)) {
     try {
-      const config = JSON.parse(readFileSync(pkgPath, "utf-8"));
+      const config = JSON.parse(readFileSync(pkgPath, "utf-8")) as {
+        workspaces?: string[] | { packages?: string[] };
+      };
       if (config.workspaces) {
-        const ws = Array.isArray(config.workspaces)
+        const ws: string[] = Array.isArray(config.workspaces)
           ? config.workspaces
           : config.workspaces.packages ?? [];
         return { type: "npm", packages: ws, root: cwd };
