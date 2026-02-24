@@ -1,5 +1,11 @@
 # @quikcommit/shared
 
+## 3.0.0
+
+### Major Changes
+
+- [#3](https://github.com/Quikcommit-Internal/quikcommit/pull/3) [`a5d81a5`](https://github.com/Quikcommit-Internal/quikcommit/commit/a5d81a5e313c5177f3d5e9511c8315dd04d2e66c) Thanks [@foundquik](https://github.com/foundquik)! - Added linting, updated types, and more.
+
 ## 2.0.0
 
 ### Major Changes
