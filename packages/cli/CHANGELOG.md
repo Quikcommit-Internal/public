@@ -1,5 +1,16 @@
 # @quikcommit/cli
 
+## 2.0.0
+
+### Major Changes
+
+- [#1](https://github.com/Quikcommit-Internal/quikcommit/pull/1) [`0ed9df1`](https://github.com/Quikcommit-Internal/quikcommit/commit/0ed9df11d523b774e200ea2553a53be93370a2ff) Thanks [@foundquik](https://github.com/foundquik)! - New release system, repo, etc
+
+### Patch Changes
+
+- Updated dependencies [[`0ed9df1`](https://github.com/Quikcommit-Internal/quikcommit/commit/0ed9df11d523b774e200ea2553a53be93370a2ff)]:
+  - @quikcommit/shared@2.0.0
+
 ## 1.0.1
 
 ### Patch Changes
