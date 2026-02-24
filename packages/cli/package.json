@@ -1,0 +1,44 @@
+{
+  "name": "@quikcommit/cli",
+  "version": "1.0.1",
+  "description": "AI-powered conventional commit messages",
+  "bin": {
+    "qc": "./dist/index.js"
+  },
+  "files": [
+    "dist/",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "git",
+    "commit",
+    "ai",
+    "conventional-commits",
+    "cli"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/quikcommit/quikcommit"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc --noEmit",
+    "start": "node dist/index.js",
+    "test": "vitest run",
+    "lint": "echo 'no linter configured'"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "esbuild": "^0.27.3",
+    "typescript": "^5.9.3",
+    "vitest": "~4.0.18"
+  },
+  "dependencies": {
+    "@quikcommit/shared": "workspace:*"
+  }
+}

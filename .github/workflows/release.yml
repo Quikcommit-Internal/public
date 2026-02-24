@@ -1,0 +1,124 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "@quikcommit/cli@*"
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  cli-binaries:
+    name: Build CLI Binary (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: macos-latest
+            target: bun-darwin-arm64
+            artifact: qc-darwin-arm64
+          - os: macos-15-intel
+            target: bun-darwin-x64
+            artifact: qc-darwin-x64
+          - os: ubuntu-latest
+            target: bun-linux-x64
+            artifact: qc-linux-x64
+          - os: ubuntu-24.04-arm
+            target: bun-linux-arm64
+            artifact: qc-linux-arm64
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm --filter @quikcommit/shared build
+
+      - run: bun install
+
+      - name: Build binary
+        run: |
+          cd packages/cli
+          bun build src/index.ts --compile --target=${{ matrix.target }} --outfile=${{ matrix.artifact }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: packages/cli/${{ matrix.artifact }}
+
+  cli-release:
+    name: Create GitHub Release
+    needs: cli-binaries
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Generate checksums
+        run: |
+          cd artifacts
+          for d in qc-darwin-arm64 qc-darwin-x64 qc-linux-x64 qc-linux-arm64; do
+            if [ -f "$d/$d" ]; then sha256sum "$d/$d"; fi
+          done > checksums.txt
+          cat checksums.txt
+
+      - name: Parse version from tag
+        id: parse
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          VERSION="${TAG##*@}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Extract changelog
+        run: |
+          VERSION="${{ steps.parse.outputs.version }}"
+          CHANGELOG=""
+          if [ -f packages/cli/CHANGELOG.md ]; then
+            FOUND=false
+            while IFS= read -r line; do
+              if [[ "$line" =~ ^##[[:space:]] ]] && [[ "$FOUND" == "true" ]]; then
+                break
+              fi
+              if [[ "$line" =~ ^##[[:space:]].*${VERSION} ]]; then
+                FOUND=true
+                continue
+              fi
+              if [[ "$FOUND" == "true" ]]; then
+                CHANGELOG+="$line"$'\n'
+              fi
+            done < packages/cli/CHANGELOG.md
+          fi
+          if [ -z "$CHANGELOG" ]; then
+            CHANGELOG="Release v${VERSION}"
+          fi
+          echo "$CHANGELOG" > release-body.md
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: "@quikcommit/cli v${{ steps.parse.outputs.version }}"
+          body_path: release-body.md
+          files: |
+            artifacts/qc-darwin-arm64/qc-darwin-arm64
+            artifacts/qc-darwin-x64/qc-darwin-x64
+            artifacts/qc-linux-x64/qc-linux-x64
+            artifacts/qc-linux-arm64/qc-linux-arm64
+            artifacts/checksums.txt
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
