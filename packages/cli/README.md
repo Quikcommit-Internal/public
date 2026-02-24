@@ -21,7 +21,7 @@ npm install -g @quikcommit/cli
 bun add -g @quikcommit/cli
 ```
 
-**Pre-built binaries** (no Node/Bun required) — download from [GitHub Releases](https://github.com/whrit/quikcommit/releases/latest):
+**Pre-built binaries** (no Node/Bun required) — download from [GitHub Releases](https://github.com/Quikcommit-Internal/public/releases/latest):
 
 | Platform | File |
 |----------|------|
@@ -32,7 +32,7 @@ bun add -g @quikcommit/cli
 
 ```bash
 # Example: macOS Apple Silicon
-curl -fsSL https://github.com/whrit/quikcommit/releases/latest/download/qc-darwin-arm64 \
+curl -fsSL https://github.com/Quikcommit-Internal/public/releases/latest/download/qc-darwin-arm64 \
   -o /usr/local/bin/qc && chmod +x /usr/local/bin/qc
 ```
 
@@ -229,11 +229,11 @@ Credentials are stored separately at `~/.config/qc/credentials` (mode 600).
 
 ## Links
 
-- [GitHub](https://github.com/whrit/quikcommit)
-- [Full Documentation](https://github.com/whrit/quikcommit/tree/main/docs)
-- [Getting Started](https://github.com/whrit/quikcommit/blob/main/docs/getting-started.md)
-- [CLI Reference](https://github.com/whrit/quikcommit/blob/main/docs/cli-reference.md)
-- [Local Providers](https://github.com/whrit/quikcommit/blob/main/docs/local-providers.md)
+- [GitHub](https://github.com/Quikcommit-Internal/public)
+- [Full Documentation](https://github.com/Quikcommit-Internal/public/tree/main/docs)
+- [Getting Started](https://github.com/Quikcommit-Internal/public/blob/main/docs/getting-started.md)
+- [CLI Reference](https://github.com/Quikcommit-Internal/public/blob/main/docs/cli-reference.md)
+- [Local Providers](https://github.com/Quikcommit-Internal/public/blob/main/docs/local-providers.md)
 
 ---
 

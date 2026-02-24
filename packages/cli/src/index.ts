@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 import { getApiKey, getConfig, saveConfig } from "./config.js";
 import { ApiClient } from "./api.js";
 import {
@@ -19,6 +18,7 @@ Usage:
   qc --push             Commit and push to origin
   qc pr                 Generate PR description from branch commits
   qc changelog          Generate changelog from commits since last tag
+  qc changeset          Automate pnpm changeset with AI
   qc init               Install prepare-commit-msg hook for auto-generation
   qc login              Sign in via browser
   qc logout             Clear local credentials
@@ -30,7 +30,7 @@ Options:
   -m, --message-only    Generate message only
   -p, --push            Commit and push after generating
   --api-key <key>       Use this API key (overrides credentials file)
-  --base <branch>       Base branch for qc pr (default: main)
+  --base <branch>       Base branch for qc pr, qc changeset (default: main)
   --create              Create PR with gh CLI after qc pr
   --from <ref>          Start ref for qc changelog (default: latest tag)
   --to <ref>            End ref for qc changelog (default: HEAD)
@@ -47,7 +47,7 @@ Commands:
 `;
 
 function parseArgs(args: string[]): {
-  command: "commit" | "login" | "logout" | "status" | "pr" | "changelog" | "init" | "team" | "config" | "upgrade" | "help";
+  command: "commit" | "login" | "logout" | "status" | "pr" | "changelog" | "init" | "team" | "config" | "upgrade" | "changeset" | "help";
   messageOnly: boolean;
   push: boolean;
   apiKey?: string;
@@ -62,7 +62,7 @@ function parseArgs(args: string[]): {
   model?: string;
   local?: boolean;
 } {
-  let command: "commit" | "login" | "logout" | "status" | "pr" | "changelog" | "init" | "team" | "config" | "upgrade" | "help" = "commit";
+  let command: "commit" | "login" | "logout" | "status" | "pr" | "changelog" | "init" | "team" | "config" | "upgrade" | "changeset" | "help" = "commit";
   let messageOnly = false;
   let push = false;
   let apiKey: string | undefined;
@@ -121,6 +121,8 @@ function parseArgs(args: string[]): {
       command = "config";
     } else if (arg === "upgrade") {
       command = "upgrade";
+    } else if (arg === "changeset") {
+      command = "changeset";
     } else if (arg === "--model" && i + 1 < args.length) {
       model = args[++i];
     } else if (arg === "--local" || arg === "--use-ollama" || arg === "--use-lmstudio" || arg === "--use-openrouter" || arg === "--use-cloudflare") {
@@ -266,6 +268,15 @@ async function main(): Promise<void> {
       to: values.to,
       write: values.write,
       version: values.version,
+      model: values.model ?? getConfig().model,
+    });
+    return;
+  }
+
+  if (command === "changeset") {
+    const { changeset } = await import("./commands/changeset.js");
+    await changeset({
+      base: values.base,
       model: values.model ?? getConfig().model,
     });
     return;

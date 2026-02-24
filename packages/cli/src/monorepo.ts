@@ -113,12 +113,22 @@ function matchGlobPattern(rel: string, pattern: string): string | null {
     return null;
   }
 
-  // Simple prefix pattern, e.g. "packages" or "apps"
   const prefix = dir + "/";
-  if (rel.startsWith(prefix)) {
-    const rest = rel.slice(prefix.length);
-    const pkg = rest.split("/")[0];
-    return pkg || null;
+  const hasGlob = /\*/.test(pattern);
+
+  if (hasGlob) {
+    // Glob pattern, e.g. "packages/*" — return first path component after prefix
+    if (rel.startsWith(prefix)) {
+      const rest = rel.slice(prefix.length);
+      const pkg = rest.split("/")[0];
+      return pkg || null;
+    }
+  } else {
+    // Exact package path (no glob), e.g. "packages/cli" — return last segment of pattern
+    if (rel === dir || rel.startsWith(prefix)) {
+      const segments = dir.split("/").filter(Boolean);
+      return segments[segments.length - 1] ?? null;
+    }
   }
 
   return null;

@@ -113,4 +113,34 @@ export interface ChangelogWorkerResponse {
   };
 }
 
+/** API request: generate changeset */
+export interface ChangesetRequest {
+  diff: string;
+  packages: string[];   // workspace package names (e.g. ["@quikcommit/cli"])
+  commits: string;      // git log --oneline output for context
+  model?: string;
+}
+
+/** API response: changeset classification */
+export interface ChangesetResponse {
+  packages: Array<{
+    name: string;
+    bump: "major" | "minor" | "patch";
+    reason: string;
+  }>;
+  summary: string;
+}
+
+/** AI Worker response shape: changeset (bump validated server-side) */
+export interface ChangesetWorkerResponse {
+  changeset: {
+    packages: Array<{
+      name: string;
+      bump: "major" | "minor" | "patch";
+      reason: string;
+    }>;
+    summary: string;
+  };
+}
+
 export type PlanTier = "free" | "pro" | "team" | "scale";

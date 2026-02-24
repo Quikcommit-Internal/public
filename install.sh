@@ -27,7 +27,7 @@ elif command -v node >/dev/null 2>&1; then
     npm install -g @quikcommit/cli
 else
     echo "Error: Neither bun nor node found. Please install Node.js (https://nodejs.org) or Bun (https://bun.sh) first."
-    echo "Alternatively, download a pre-built binary from: https://github.com/quikcommit/quikcommit/releases"
+    echo "Alternatively, download a pre-built binary from: https://github.com/Quikcommit-Internal/public/releases"
     exit 1
 fi
 

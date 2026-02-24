@@ -36,15 +36,15 @@ Or with a pre-built binary (no Node required):
 
 ```bash
 # macOS Apple Silicon
-curl -fsSL https://github.com/whrit/quikcommit/releases/latest/download/qc-darwin-arm64 \
+curl -fsSL https://github.com/Quikcommit-Internal/public/releases/latest/download/qc-darwin-arm64 \
   -o /usr/local/bin/qc && chmod +x /usr/local/bin/qc
 
 # macOS Intel
-curl -fsSL https://github.com/whrit/quikcommit/releases/latest/download/qc-darwin-x64 \
+curl -fsSL https://github.com/Quikcommit-Internal/public/releases/latest/download/qc-darwin-x64 \
   -o /usr/local/bin/qc && chmod +x /usr/local/bin/qc
 
 # Linux x64
-curl -fsSL https://github.com/whrit/quikcommit/releases/latest/download/qc-linux-x64 \
+curl -fsSL https://github.com/Quikcommit-Internal/public/releases/latest/download/qc-linux-x64 \
   -o /usr/local/bin/qc && chmod +x /usr/local/bin/qc
 ```
 

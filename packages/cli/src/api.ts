@@ -5,6 +5,8 @@ import type {
   CommitRules,
   PRRequest,
   ChangelogRequest,
+  ChangesetRequest,
+  ChangesetResponse,
 } from "@quikcommit/shared";
 
 export interface ApiClientOptions {
@@ -85,6 +87,17 @@ export class ApiClient {
       "Changelog generation requires Pro plan. Upgrade at https://app.quikcommit.dev/billing"
     );
     return { message: data.message ?? "" };
+  }
+
+  async generateChangeset(req: ChangesetRequest): Promise<ChangesetResponse> {
+    const data = await this.request<{
+      packages?: ChangesetResponse["packages"];
+      summary?: string;
+    }>("/v1/changeset", req);
+    return {
+      packages: data.packages ?? [],
+      summary: data.summary ?? "",
+    };
   }
 
   private async fetchJson<T>(

@@ -147,7 +147,7 @@ function buildRequest(
     headers["Authorization"] = `Bearer ${apiKey}`;
   }
   if (provider === "openrouter") {
-    headers["HTTP-Referer"] = "https://github.com/quikcommit/quikcommit";
+    headers["HTTP-Referer"] = "https://github.com/Quikcommit-Internal/public";
     headers["X-Title"] = "qc - AI Commit Message Generator";
   }
 

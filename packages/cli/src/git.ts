@@ -131,3 +131,35 @@ export function getCommitsSince(ref: string, to = "HEAD"): Array<{ hash: string;
       return { hash: hash ?? "", subject: rest.join(" ").trim() };
     });
 }
+
+/** Get list of files changed since base branch */
+export function getChangedFilesSince(base = "main"): string[] {
+  validateRef(base, "base");
+  const output = execFileSync("git", ["diff", `${base}..HEAD`, "--name-only"], {
+    encoding: "utf-8",
+    maxBuffer: 10 * 1024 * 1024,
+  });
+  return output.trim().split("\n").filter(Boolean);
+}
+
+/** Get one-line commit log since base branch (for AI context) */
+export function getOnlineLog(base = "main"): string {
+  validateRef(base, "base");
+  return execFileSync(
+    "git",
+    ["log", `${base}..HEAD`, "--oneline", "--max-count=200"],
+    {
+      encoding: "utf-8",
+      maxBuffer: 5 * 1024 * 1024,
+    }
+  ).trim();
+}
+
+/** Get full diff since base branch */
+export function getFullDiff(base = "main"): string {
+  validateRef(base, "base");
+  return execFileSync("git", ["diff", `${base}..HEAD`], {
+    encoding: "utf-8",
+    maxBuffer: 10 * 1024 * 1024,
+  });
+}

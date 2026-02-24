@@ -14,7 +14,7 @@ brew install quikcommit/tap/quikcommit
 
 ## Binary Download
 
-Download the standalone binary for your platform from [GitHub Releases](https://github.com/quikcommit/quikcommit/releases):
+Download the standalone binary for your platform from [GitHub Releases](https://github.com/Quikcommit-Internal/public/releases):
 
 - **macOS (Apple Silicon):** `qc-darwin-arm64`
 - **macOS (Intel):** `qc-darwin-x64`
@@ -31,7 +31,7 @@ mv qc-darwin-arm64 /usr/local/bin/qc
 ## curl (Linux/macOS)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/quikcommit/quikcommit/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/Quikcommit-Internal/public/main/install.sh | sh
 ```
 
 ## Verify

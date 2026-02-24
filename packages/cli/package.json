@@ -20,7 +20,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/quikcommit/quikcommit"
+    "url": "https://github.com/Quikcommit-Internal/public"
   },
   "scripts": {
     "build": "node build.mjs",
