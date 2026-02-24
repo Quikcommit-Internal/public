@@ -1,5 +1,15 @@
 # @quikcommit/cli
 
+## 4.0.0
+
+### Major Changes
+
+- [#8](https://github.com/Quikcommit-Internal/quikcommit/pull/8) [`9d319ac`](https://github.com/Quikcommit-Internal/quikcommit/commit/9d319ac96fea61ea4b1916fca7c315cfc7bc771d) Thanks [@foundquik](https://github.com/foundquik)! - Packages and such fixed, CI/CD Feats
+
+### Minor Changes
+
+- [#7](https://github.com/Quikcommit-Internal/quikcommit/pull/7) [`c60171a`](https://github.com/Quikcommit-Internal/quikcommit/commit/c60171a9791c4b1a47d1e19bcd206a267ae7d15d) Thanks [@foundquik](https://github.com/foundquik)! - Fixed release workflow again, I hope.
+
 ## 3.1.0
 
 ### Minor Changes
