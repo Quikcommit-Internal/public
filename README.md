@@ -159,11 +159,9 @@ Every teammate gets it on their next `qc` run — no per-developer setup.
 quikcommit/
 ├── packages/
 │   ├── cli/           # @quikcommit/cli  — the qc binary (TypeScript + Bun)
-│   ├── api-gateway/   # Cloudflare Worker — auth, rate limiting, billing
-│   ├── ai-worker/     # Cloudflare Worker — AI inference (Cloudflare AI)
 │   ├── shared/        # Shared types, constants, model catalog
-│   └── dashboard/     # Web app (app.quikcommit.dev)
-├── docs/              # Documentation
+│   └── docs/          # Documentation site (VitePress)
+├── docs/              # Markdown documentation
 └── .changeset/        # Changesets for versioning
 ```
 
