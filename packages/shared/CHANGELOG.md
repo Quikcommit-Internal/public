@@ -1,5 +1,11 @@
 # @quikcommit/shared
 
+## 3.1.0
+
+### Minor Changes
+
+- [#5](https://github.com/Quikcommit-Internal/quikcommit/pull/5) [`b0819e8`](https://github.com/Quikcommit-Internal/quikcommit/commit/b0819e823f4f0b28567ecf750179bb6ef230dad3) Thanks [@foundquik](https://github.com/foundquik)! - New CI/CD config and deployment.
+
 ## 3.0.0
 
 ### Major Changes
