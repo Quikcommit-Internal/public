@@ -1,5 +1,11 @@
 # @quikcommit/shared
 
+## 4.2.0
+
+### Minor Changes
+
+- [#13](https://github.com/Quikcommit-Internal/quikcommit/pull/13) [`3ba9496`](https://github.com/Quikcommit-Internal/quikcommit/commit/3ba9496f41fdb3e05b30ae5a9e72ef7daab63b71) Thanks [@foundquik](https://github.com/foundquik)! - Fixed CI/CD, releases, etc
+
 ## 4.1.0
 
 ### Minor Changes
