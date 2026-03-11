@@ -1,5 +1,11 @@
 # @quikcommit/shared
 
+## 4.3.0
+
+### Minor Changes
+
+- [#21](https://github.com/Quikcommit-Internal/quikcommit/pull/21) [`fbc4660`](https://github.com/Quikcommit-Internal/quikcommit/commit/fbc46604e7c79df72fa00b324f7e22cf8423c7f0) Thanks [@foundquik](https://github.com/foundquik)! - Fixed polling time, added git add config option
+
 ## 4.2.0
 
 ### Minor Changes
