@@ -61,6 +61,21 @@ export function hasStagedChanges(): boolean {
   return output.trim().length > 0;
 }
 
+export function getUnstagedFiles(): string[] {
+  const output = execFileSync("git", ["status", "--porcelain"], {
+    encoding: "utf-8",
+  });
+  return output
+    .trim()
+    .split("\n")
+    .filter(Boolean)
+    .filter((line) => !line.startsWith("??")); // exclude untracked
+}
+
+export function stageAll(): void {
+  execFileSync("git", ["add", "-u"], { stdio: "pipe" });
+}
+
 export function gitCommit(message: string): void {
   const tmpDir = mkdtempSync(join(tmpdir(), "qc-"));
   const tmpFile = join(tmpDir, "commit.txt");

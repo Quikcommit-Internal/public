@@ -5,6 +5,8 @@ import {
   getStagedDiff,
   getStagedFiles,
   hasStagedChanges,
+  getUnstagedFiles,
+  stageAll,
   gitCommit,
   gitPush,
 } from "./git.js";
@@ -27,6 +29,7 @@ Usage:
 
 Options:
   -h, --help            Show this help
+  -a, --all             Stage all tracked changes before generating
   -m, --message-only    Generate message only
   -p, --push            Commit and push after generating
   --api-key <key>       Use this API key (overrides credentials file)
@@ -48,6 +51,7 @@ Commands:
 
 function parseArgs(args: string[]): {
   command: "commit" | "login" | "logout" | "status" | "pr" | "changelog" | "init" | "team" | "config" | "upgrade" | "changeset" | "help";
+  all: boolean;
   messageOnly: boolean;
   push: boolean;
   apiKey?: string;
@@ -63,6 +67,7 @@ function parseArgs(args: string[]): {
   local?: boolean;
 } {
   let command: "commit" | "login" | "logout" | "status" | "pr" | "changelog" | "init" | "team" | "config" | "upgrade" | "changeset" | "help" = "commit";
+  let all = false;
   let messageOnly = false;
   let push = false;
   let apiKey: string | undefined;
@@ -81,6 +86,8 @@ function parseArgs(args: string[]): {
     const arg = args[i];
     if (arg === "-h" || arg === "--help") {
       command = "help";
+    } else if (arg === "-a" || arg === "--all") {
+      all = true;
     } else if (arg === "-m" || arg === "--message-only") {
       messageOnly = true;
     } else if (arg === "-p" || arg === "--push") {
@@ -147,7 +154,7 @@ function parseArgs(args: string[]): {
     }
   }
 
-  return { command, messageOnly, push, apiKey, base, create, from, to, write, version, uninstall, hookMode, model, local };
+  return { command, all, messageOnly, push, apiKey, base, create, from, to, write, version, uninstall, hookMode, model, local };
 }
 
 async function runCommit(
@@ -155,7 +162,8 @@ async function runCommit(
   push: boolean,
   apiKeyFlag?: string,
   hookMode = false,
-  modelFlag?: string
+  modelFlag?: string,
+  stageAll_?: boolean
 ): Promise<void> {
   const log = hookMode ? () => {} : (msg: string) => console.error(msg);
 
@@ -164,8 +172,18 @@ async function runCommit(
     process.exit(1);
   }
 
+  const config = getConfig();
+  if (stageAll_ || config.autoStage) {
+    stageAll();
+  }
+
   if (!hasStagedChanges()) {
-    log("Error: No staged changes. Stage files with `git add` first.");
+    const unstaged = getUnstagedFiles();
+    if (unstaged.length > 0) {
+      log("Error: No staged changes. Use `qc -a` to stage tracked files, or `git add` manually.");
+    } else {
+      log("Error: No changes to commit.");
+    }
     process.exit(1);
   }
 
@@ -175,7 +193,6 @@ async function runCommit(
     process.exit(1);
   }
 
-  const config = getConfig();
   const model = modelFlag ?? config.model;
   const excludes = config.excludes ?? [];
   const diff = getStagedDiff(excludes);
@@ -326,7 +343,7 @@ async function main(): Promise<void> {
     }
   }
 
-  await runCommit(messageOnly, push, apiKey, values.hookMode, values.model);
+  await runCommit(messageOnly, push, apiKey, values.hookMode, values.model, values.all);
 }
 
 main().catch((err) => {

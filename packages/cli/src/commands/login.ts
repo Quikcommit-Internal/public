@@ -10,6 +10,8 @@ import {
 const API_URL = process.env.QC_API_URL ?? DEFAULT_API_URL;
 const DASHBOARD_URL = "https://app.quikcommit.dev";
 
+const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+
 function openBrowser(url: string): boolean {
   try {
     if (platform() === "darwin") {
@@ -61,26 +63,40 @@ export async function runLogin(): Promise<void> {
     console.log("");
   }
 
-  const startTime = Date.now();
-  while (Date.now() - startTime < DEVICE_FLOW_TIMEOUT) {
-    try {
-      const res = await fetch(
-        `${API_URL}/v1/auth/device/poll?code=${encodeURIComponent(code)}`
-      );
-      const data = (await res.json()) as { status: string; api_key?: string };
+  let frame = 0;
+  const spinner = setInterval(() => {
+    const elapsed = Math.floor((Date.now() - startTime) / 1000);
+    process.stderr.write(
+      `\r${SPINNER_FRAMES[frame++ % SPINNER_FRAMES.length]} Waiting for authorization... (${elapsed}s)`
+    );
+  }, 80);
 
-      if (data.status === "complete" && data.api_key) {
-        saveApiKey(data.api_key);
-        console.log("Successfully logged in!");
-        return;
+  const startTime = Date.now();
+  try {
+    while (Date.now() - startTime < DEVICE_FLOW_TIMEOUT) {
+      try {
+        const res = await fetch(
+          `${API_URL}/v1/auth/device/poll?code=${encodeURIComponent(code)}`
+        );
+        const data = (await res.json()) as { status: string; api_key?: string };
+
+        if (data.status === "complete" && data.api_key) {
+          saveApiKey(data.api_key);
+          process.stderr.write("\r\x1b[2K");
+          console.log("Successfully logged in!");
+          return;
+        }
+      } catch {
+        // Ignore transient poll errors and retry on next interval.
       }
-    } catch {
-      // Ignore transient poll errors and retry on next interval.
+
+      await new Promise((r) => setTimeout(r, DEVICE_POLL_INTERVAL));
     }
 
-    await new Promise((r) => setTimeout(r, DEVICE_POLL_INTERVAL));
+    process.stderr.write("\r\x1b[2K");
+    console.error("Login timed out. Please try again.");
+    process.exit(1);
+  } finally {
+    clearInterval(spinner);
   }
-
-  console.error("Login timed out. Please try again.");
-  process.exit(1);
 }

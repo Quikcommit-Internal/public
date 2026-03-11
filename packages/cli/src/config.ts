@@ -50,6 +50,7 @@ export type LocalProvider =
 
 export interface LocalConfig {
   apiUrl?: string;
+  autoStage?: boolean;
   excludes?: string[];
   model?: string;
   provider?: LocalProvider;

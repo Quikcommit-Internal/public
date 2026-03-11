@@ -14,7 +14,7 @@ export function config(args: string[]): void {
     const value = args[2];
     if (!key || !value) {
       console.error("Usage: qc config set <key> <value>");
-      console.error("  Keys: model, api_url, provider");
+      console.error("  Keys: model, api_url, provider, auto_stage");
       process.exit(1);
     }
     setConfig(key, value);
@@ -37,8 +37,9 @@ function showConfig(): void {
   console.log("Current configuration:");
   console.log(`  model:    ${cfg.model ?? "(default for plan)"}`);
   console.log(`  api_url:  ${cfg.apiUrl ?? DEFAULT_API_URL}`);
-  console.log(`  provider: ${cfg.provider ?? "(default)"}`);
-  console.log(`  auth:     ${apiKey ? "****" : "not set"}`);
+  console.log(`  provider:   ${cfg.provider ?? "(default)"}`);
+  console.log(`  auto_stage: ${cfg.autoStage ? "true" : "false"}`);
+  console.log(`  auth:       ${apiKey ? "****" : "not set"}`);
   if (cfg.excludes?.length) {
     console.log(`  excludes: ${cfg.excludes.join(", ")}`);
   }
@@ -65,9 +66,11 @@ function setConfig(key: string, value: string): void {
       console.error("Invalid URL:", value);
       process.exit(1);
     }
+  } else if (key === "auto_stage") {
+    updates.autoStage = value === "true" || value === "1";
   } else {
     console.error(`Unknown key: ${key}`);
-    console.error("  Keys: model, api_url, provider");
+    console.error("  Keys: model, api_url, provider, auto_stage");
     process.exit(1);
   }
 
