@@ -1,6 +1,7 @@
 import { execFileSync } from "child_process";
 import { getApiKey } from "../config.js";
 import { ApiClient } from "../api.js";
+import { detectCommitlintRules } from "../commitlint.js";
 import { getBranchCommits, getDiffStat } from "../git.js";
 
 export async function pr(options: {
@@ -17,6 +18,11 @@ export async function pr(options: {
     process.exit(1);
   }
 
+  const commitlintRules = await detectCommitlintRules();
+  // Note: unlike runCommit(), qc pr does not merge config.rules here —
+  // PR descriptions are about summarizing what changed, not enforcing commit conventions.
+  // commitlintRules still apply for type/scope awareness in the description.
+
   console.error(`Generating PR description from ${commits.length} commits...`);
 
   const apiKey = getApiKey();
@@ -31,6 +37,7 @@ export async function pr(options: {
       commits,
       diff_stat: diffStat,
       base_branch: base,
+      rules: commitlintRules,
     },
     options.model
   );

@@ -97,12 +97,13 @@ commitlint.config.ts
 
 1. **`npx --no commitlint --print-config`** — runs commitlint's own resolver, returns fully-resolved JSON. Used when commitlint is installed in the project. `--no` prevents npm from auto-installing.
 2. **Inline `node --input-type=module` evaluation** — spawns a small inline script that dynamically imports the config and `JSON.stringify`s the default export. Works for `.mjs`/`.js` without commitlint installed.
-3. **Direct JSON parse** — for `.commitlintrc.json` and `.commitlintrc`. YAML files are skipped (no YAML dependency in this project).
-4. **Silent return `undefined`** if all strategies fail — never throws, never blocks a commit.
+3. **YAML parse** — for `.commitlintrc.yml` and `.commitlintrc.yaml` via the `yaml` npm package (added as a `dependencies` entry in `packages/cli`).
+4. **Direct JSON parse** — for `.commitlintrc.json` and `.commitlintrc`.
+5. **Silent return `undefined`** if all strategies fail — never throws, never blocks a commit.
 
 **Commitlint rule tuple → `CommitRules` mapping:**
 
-Commitlint rules are `[severity, applicability, value]`. Only map rules where severity ≥ 1 and applicability is `'always'`.
+Commitlint rules are `[severity, applicability, value]`. Only map rules where severity ≥ 1 and applicability is `'always'`, **except `subject-full-stop`** which uses `applicability: 'never'` (the standard commitlint convention meaning "subject must not end with this character").
 
 | Commitlint rule | `CommitRules` field |
 |---|---|

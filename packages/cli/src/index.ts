@@ -1,5 +1,7 @@
+import type { CommitRules } from "@quikcommit/shared";
 import { getApiKey, getConfig, saveConfig } from "./config.js";
 import { ApiClient } from "./api.js";
+import { detectCommitlintRules } from "./commitlint.js";
 import {
   isGitRepo,
   getStagedDiff,
@@ -198,7 +200,8 @@ async function runCommit(
   const diff = getStagedDiff(excludes);
   const changes = getStagedFiles();
 
-  let rules = config.rules ?? {};
+  const commitlintRules = await detectCommitlintRules();
+  let rules: CommitRules = { ...commitlintRules, ...(config.rules ?? {}) };
   const workspace = detectWorkspace();
   let monorepoScopes: string[] | undefined;
   if (workspace) {
