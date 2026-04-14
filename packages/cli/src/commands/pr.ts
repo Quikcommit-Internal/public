@@ -7,13 +7,12 @@ import { ApiClient } from "../api.js";
 import { detectCommitlintRules } from "../commitlint.js";
 import { getBranchCommits, getCurrentBranch, getDiffStat, getGitRoot } from "../git.js";
 
-/** Supported PR template locations (first match wins). See docs: packages/docs/api/pr.md */
+/** Supported PR template locations, matching GitHub's own resolution order (first match wins). */
 function findPullRequestTemplate(gitRoot: string): { path: string; content: string } | undefined {
   const fileCandidates = [
     join(gitRoot, ".github", "pull_request_template.md"),
     join(gitRoot, ".github", "PULL_REQUEST_TEMPLATE.md"),
     join(gitRoot, "pull_request_template.md"),
-    join(gitRoot, "docs", "pull_request_template.md"),
   ];
   for (const p of fileCandidates) {
     try {
@@ -24,11 +23,13 @@ function findPullRequestTemplate(gitRoot: string): { path: string; content: stri
       // ignore unreadable paths
     }
   }
+  // GitHub also supports multi-template directories: .github/PULL_REQUEST_TEMPLATE/*.md
+  // When present, use the first template alphabetically (mirrors GitHub's chooser default).
   const multiDir = join(gitRoot, ".github", "PULL_REQUEST_TEMPLATE");
   try {
     if (existsSync(multiDir) && statSync(multiDir).isDirectory()) {
       const names = readdirSync(multiDir)
-        .filter((f) => f.endsWith(".md"))
+        .filter((f) => f.toLowerCase().endsWith(".md"))
         .sort();
       if (names.length > 0) {
         const p = join(multiDir, names[0]);
@@ -38,7 +39,7 @@ function findPullRequestTemplate(gitRoot: string): { path: string; content: stri
       }
     }
   } catch {
-    // ignore
+    // Suppress EACCES, ENOENT, and other fs errors — template detection is best-effort.
   }
   return undefined;
 }
@@ -60,6 +61,8 @@ export async function pr(options: {
     console.error(`[qc] Using PR template from ${relative(gitRoot, templateHit.path)}`);
   }
 
+  // Truncate here so overly long branch names don't inflate the request body; the gateway
+  // also truncates as defense-in-depth in case the CLI is bypassed.
   const currentBranch = getCurrentBranch().slice(0, MAX_PR_CURRENT_BRANCH_CHARS);
 
   if (commits.length === 0) {
