@@ -102,5 +102,8 @@ export const CONFIG_DIR = ".config/qc";
 export const CREDENTIALS_FILE = "credentials";
 export const CONFIG_FILE = "config.json";
 export const DEFAULT_API_URL = "https://api.quikcommit.dev";
-export const DEVICE_POLL_INTERVAL = 2000;
+
+/** Max length for `current_branch` on PR requests (prompt size / abuse guard) */
+export const MAX_PR_CURRENT_BRANCH_CHARS = 256;
+export const DEVICE_POLL_INTERVAL = 1000;
 export const DEVICE_FLOW_TIMEOUT = 600_000;

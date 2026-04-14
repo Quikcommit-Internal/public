@@ -25,6 +25,10 @@ export interface PRRequest {
   commits: string[];
   diff_stat: string;
   base_branch: string;
+  /** For checkbox selector context in repo PR templates */
+  current_branch?: string;
+  /** Content of `.github/pull_request_template.md` when present */
+  pr_template?: string;
   rules?: CommitRules;
   model?: string;
 }
@@ -102,6 +106,7 @@ export interface AIWorkerResponse {
 /** AI Worker response shape: PR description */
 export interface PRWorkerResponse {
   pr: {
+    title: string;
     response: string;
   };
 }

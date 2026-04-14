@@ -70,13 +70,13 @@ export class ApiClient {
     return { message: data.message ?? "", diagnostics: data.diagnostics };
   }
 
-  async generatePR(req: PRRequest, model?: string): Promise<{ message: string }> {
-    const data = await this.request<{ message?: string }>(
+  async generatePR(req: PRRequest, model?: string): Promise<{ message: string; title: string }> {
+    const data = await this.request<{ message?: string; title?: string }>(
       "/v1/pr",
       { ...req, model },
       "PR descriptions require Pro plan. Upgrade at https://app.quikcommit.dev/billing"
     );
-    return { message: data.message ?? "" };
+    return { message: data.message ?? "", title: data.title ?? "" };
   }
 
   async generateChangelog(req: ChangelogRequest, model?: string): Promise<{ message: string }> {
