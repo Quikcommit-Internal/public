@@ -1,5 +1,11 @@
 # @quikcommit/shared
 
+## 5.0.0
+
+### Major Changes
+
+- [`f0dd189`](https://github.com/Quikcommit-Internal/quikcommit/commit/f0dd1895e21d31c796ad2c216090d49b1a835b14) - MANY MANY GREAT UPDATES
+
 ## 4.3.0
 
 ### Minor Changes
