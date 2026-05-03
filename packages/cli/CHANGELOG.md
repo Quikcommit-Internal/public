@@ -1,5 +1,11 @@
 # @quikcommit/cli
 
+## 6.0.0
+
+### Major Changes
+
+- [#24](https://github.com/Quikcommit-Internal/quikcommit/pull/24) [`9f65f50`](https://github.com/Quikcommit-Internal/quikcommit/commit/9f65f509136f825de1f2dd9dd5ad00ddcffec105) Thanks [@foundquik](https://github.com/foundquik)! - Updated deps
+
 ## 5.0.0
 
 ### Major Changes
