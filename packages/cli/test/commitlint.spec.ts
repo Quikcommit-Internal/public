@@ -169,7 +169,7 @@ describe("detectCommitlintRules", () => {
           "type-enum": [2, "always", ["feat", "fix", "chore"]],
           "scope-enum": [2, "always", ["cli", "api"]],
         },
-      }) as unknown as string
+      })
     );
 
     const result = await detectCommitlintRules();
@@ -186,13 +186,13 @@ describe("detectCommitlintRules", () => {
     // First execFileSync call: npx --print-config → empty rules (falls through)
     // Second call: node --experimental-strip-types → success
     vi.mocked(execFileSync)
-      .mockReturnValueOnce(JSON.stringify({ rules: {} }) as unknown as string)
+      .mockReturnValueOnce(JSON.stringify({ rules: {} }))
       .mockReturnValueOnce(
         JSON.stringify({
           rules: {
             "type-enum": [2, "always", ["feat", "fix", "ts-only"]],
           },
-        }) as unknown as string
+        })
       );
 
     const result = await detectCommitlintRules();
@@ -217,7 +217,7 @@ describe("detectCommitlintRules", () => {
           rules: {
             "type-enum": [2, "always", ["feat", "tsx-fallback"]],
           },
-        }) as unknown as string
+        })
       ); // npx tsx succeeds
 
     const result = await detectCommitlintRules();

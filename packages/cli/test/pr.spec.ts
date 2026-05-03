@@ -60,7 +60,7 @@ describe("PR template detection", () => {
   beforeEach(() => {
     vi.mocked(existsSync).mockReturnValue(false);
     vi.mocked(statSync).mockReturnValue({ isFile: () => false, isDirectory: () => false } as any);
-    vi.mocked(readdirSync).mockReturnValue([] as any);
+    vi.mocked(readdirSync).mockReturnValue([]);
     consoleErrorSpy.mockClear();
     consoleLogSpy.mockClear();
   });
