@@ -3,12 +3,12 @@ import { platform } from "os";
 import { saveApiKey } from "../config.js";
 import {
   DEFAULT_API_URL,
-  DEVICE_POLL_INTERVAL,
   DEVICE_FLOW_TIMEOUT,
 } from "@quikcommit/shared";
 
 const API_URL = process.env.QC_API_URL ?? DEFAULT_API_URL;
 const DASHBOARD_URL = "https://app.quikcommit.dev";
+const CLIENT_ID = "qc-cli";
 
 const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
@@ -32,30 +32,48 @@ function openBrowser(url: string): boolean {
   return false;
 }
 
+interface DeviceCodeResponse {
+  device_code: string;
+  user_code: string;
+  verification_uri: string;
+  verification_uri_complete?: string;
+  interval: number;
+  expires_in: number;
+}
+
+interface TokenResponse {
+  access_token?: string;
+  error?: string;
+  error_description?: string;
+}
+
 export async function runLogin(): Promise<void> {
-  // Issue #13: device code is now generated server-side (RFC 8628 §3.1).
-  // Send an empty body; the server returns the authoritative device_code.
-  const startRes = await fetch(`${API_URL}/v1/auth/device/start`, {
+  // Step 1: Request device + user codes
+  const codeRes = await fetch(`${API_URL}/api/auth/device/code`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({}),
+    body: JSON.stringify({ client_id: CLIENT_ID }),
   });
 
-  if (!startRes.ok) {
-    const err = (await startRes.json().catch(() => ({ error: startRes.statusText }))) as { error?: string };
+  if (!codeRes.ok) {
+    const err = (await codeRes.json().catch(() => ({ error: codeRes.statusText }))) as { error?: string };
     throw new Error(err.error ?? "Failed to start device flow");
   }
 
-  const startData = (await startRes.json()) as { device_code?: string; status?: string };
-  const code = startData.device_code;
-  if (!code) {
-    throw new Error("Server did not return a device_code");
+  const codeData = (await codeRes.json()) as DeviceCodeResponse;
+  const { device_code, user_code, verification_uri_complete, interval = 5 } = codeData;
+
+  if (!device_code || !user_code) {
+    throw new Error("Server did not return device codes");
   }
 
+  // Step 2: Show user code and open browser
   console.log("Opening browser to sign in...");
   console.log("");
+  console.log(`  Your code: ${user_code}`);
+  console.log("");
 
-  const authUrl = `${DASHBOARD_URL}/auth/cli?code=${encodeURIComponent(code)}`;
+  const authUrl = verification_uri_complete ?? `${DASHBOARD_URL}/device?user_code=${encodeURIComponent(user_code)}`;
   const opened = openBrowser(authUrl);
   if (!opened) {
     console.log("Could not open browser. Please visit:");
@@ -63,6 +81,7 @@ export async function runLogin(): Promise<void> {
     console.log("");
   }
 
+  // Step 3: Poll for token
   let frame = 0;
   const spinner = setInterval(() => {
     const elapsed = Math.floor((Date.now() - startTime) / 1000);
@@ -71,26 +90,59 @@ export async function runLogin(): Promise<void> {
     );
   }, 80);
 
+  let pollingInterval = interval * 1000;
   const startTime = Date.now();
+
   try {
     while (Date.now() - startTime < DEVICE_FLOW_TIMEOUT) {
-      try {
-        const res = await fetch(
-          `${API_URL}/v1/auth/device/poll?code=${encodeURIComponent(code)}`
-        );
-        const data = (await res.json()) as { status: string; api_key?: string };
+      await new Promise((r) => setTimeout(r, pollingInterval));
 
-        if (data.status === "complete" && data.api_key) {
-          saveApiKey(data.api_key);
+      try {
+        const tokenRes = await fetch(`${API_URL}/api/auth/device/token`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            grant_type: "urn:ietf:params:oauth:grant-type:device_code",
+            device_code,
+            client_id: CLIENT_ID,
+          }),
+        });
+
+        const tokenData = (await tokenRes.json()) as TokenResponse;
+
+        if (tokenData.access_token) {
+          saveApiKey(tokenData.access_token);
           process.stderr.write("\r\x1b[2K");
           console.log("Successfully logged in!");
           return;
         }
-      } catch {
-        // Ignore transient poll errors and retry on next interval.
-      }
 
-      await new Promise((r) => setTimeout(r, DEVICE_POLL_INTERVAL));
+        if (tokenData.error) {
+          switch (tokenData.error) {
+            case "authorization_pending":
+              break; // continue polling
+            case "slow_down":
+              pollingInterval += 5000;
+              break;
+            case "access_denied":
+              process.stderr.write("\r\x1b[2K");
+              console.error("Authorization was denied.");
+              process.exit(1);
+              break;
+            case "expired_token":
+              process.stderr.write("\r\x1b[2K");
+              console.error("Device code expired. Please try again.");
+              process.exit(1);
+              break;
+            default:
+              process.stderr.write("\r\x1b[2K");
+              console.error(`Error: ${tokenData.error_description ?? tokenData.error}`);
+              process.exit(1);
+          }
+        }
+      } catch {
+        // Ignore transient network errors; retry on next interval
+      }
     }
 
     process.stderr.write("\r\x1b[2K");
