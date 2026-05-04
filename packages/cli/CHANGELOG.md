@@ -1,5 +1,11 @@
 # @quikcommit/cli
 
+## 8.0.0
+
+### Major Changes
+
+- [#43](https://github.com/Quikcommit-Internal/quikcommit/pull/43) [`b7e900d`](https://github.com/Quikcommit-Internal/quikcommit/commit/b7e900deb9a439a9c380426faac228956cb1e410) Thanks [@foundquik](https://github.com/foundquik)! - Implemented CLI foundations changes
+
 ## 7.0.0
 
 ### Major Changes
