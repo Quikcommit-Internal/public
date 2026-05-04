@@ -3,6 +3,7 @@ import { DEFAULT_API_URL } from "@quikcommit/shared";
 import type {
   CommitRequest,
   CommitRules,
+  CommitGenerationHints,
   PRRequest,
   ChangelogRequest,
   ChangesetRequest,
@@ -60,9 +61,20 @@ export class ApiClient {
     diff: string,
     changes: string,
     rules?: CommitRules,
-    model?: string
+    model?: string,
+    recentCommits?: string[],
+    generationHints?: CommitGenerationHints
   ): Promise<{ message: string; diagnostics?: unknown }> {
-    const body: CommitRequest = { diff, changes, rules, model };
+    const body: CommitRequest = {
+      diff,
+      changes,
+      rules,
+      model,
+      recent_commits: recentCommits,
+      ...(generationHints && Object.keys(generationHints).length > 0
+        ? { generation_hints: generationHints }
+        : {}),
+    };
     const data = await this.request<{ message?: string; diagnostics?: unknown }>(
       "/v1/commit",
       body

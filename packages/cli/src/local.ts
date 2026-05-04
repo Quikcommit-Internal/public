@@ -6,12 +6,8 @@
 import { readFileSync, existsSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
-import {
-  getConfig,
-  getApiKey,
-  type LocalProvider,
-} from "./config.js";
-import { CONFIG_DIR } from "@quikcommit/shared";
+import { getConfig, getApiKey, type LocalProvider } from "./config.js";
+import { CONFIG_DIR, type CommitGenerationHints } from "@quikcommit/shared";
 import {
   isGitRepo,
   getStagedDiff,
@@ -19,8 +15,43 @@ import {
   hasStagedChanges,
   gitCommit,
   gitPush,
+  getRecentBranchCommits,
 } from "./git.js";
 import { detectWorkspace, autoDetectScope } from "./monorepo.js";
+import { detectCommitlintRules } from "./commitlint.js";
+import { preprocessDiff } from "./smart-diff.js";
+import { getUI } from "./ui.js";
+import type { CommitRules } from "@quikcommit/shared";
+import {
+  applyCliTypeScopeToRules,
+  generationHintsFromArgs,
+  interactiveRefineMessage,
+  confirmCommit,
+  shouldSkipTTYInteraction,
+  logVerboseDiagnostics,
+  createSilentLog,
+  displayCommitMessage,
+} from "./commit-helpers.js";
+
+/** Subset of CLI flags used by local commit (avoids circular import with `index.ts`). */
+export interface LocalCommitOptions {
+  messageOnly: boolean;
+  push: boolean;
+  model?: string;
+  exclude: string[];
+  noSmartDiff: boolean;
+  noContext: boolean;
+  type?: string;
+  scope?: string;
+  split: boolean;
+  forceBody: boolean;
+  interactive: boolean;
+  confirm: boolean;
+  verbose: boolean;
+  quiet: boolean;
+  hookMode?: boolean;
+  dryRun: boolean;
+}
 
 const CONFIG_PATH = join(homedir(), CONFIG_DIR);
 
@@ -87,17 +118,12 @@ export function getLocalProviderConfig(): {
   apiKey: string | null;
 } | null {
   const config = getConfig();
-  const provider =
-    (config.provider) ?? getLegacyProvider();
+  const provider = config.provider ?? getLegacyProvider();
   if (!provider) return null;
 
   const baseUrl =
-    config.apiUrl ??
-    getLegacyBaseUrl(provider) ??
-    PROVIDER_URLS[provider] ??
-    "";
+    config.apiUrl ?? getLegacyBaseUrl(provider) ?? PROVIDER_URLS[provider] ?? "";
   if (!baseUrl) return null;
-
   const model = config.model ?? getLegacyModel(provider) ?? DEFAULT_MODELS[provider];
   const apiKey = provider === "openrouter" || provider === "custom" ? getApiKey() : null;
 
@@ -106,7 +132,13 @@ export function getLocalProviderConfig(): {
   return { provider, baseUrl, model, apiKey };
 }
 
-function buildUserPrompt(changes: string, diff: string, rules?: Record<string, unknown>): string {
+function buildUserPrompt(
+  changes: string,
+  diff: string,
+  rules: Record<string, unknown> | undefined,
+  recentCommits: string[] | undefined,
+  hints: CommitGenerationHints | undefined
+): string {
   let prompt = `Generate a commit message for these changes:
 
 ## File changes:
@@ -120,6 +152,16 @@ ${diff}
 </diff>
 
 `;
+  if (recentCommits && recentCommits.length > 0) {
+    const history = recentCommits.slice(0, 10).join("\n");
+    prompt += `Recent commits on this branch (match style when appropriate):\n${history}\n\n`;
+  }
+  if (hints?.split) {
+    prompt += `MULTI-COMMIT MODE: If changes span multiple logical commits, focus the message on the primary change and mention other slices in the body.\n\n`;
+  }
+  if (hints?.force_body) {
+    prompt += `The user requires a BODY section after the subject line, even for small changes.\n\n`;
+  }
   if (rules && Object.keys(rules).length > 0) {
     prompt += `Rules: ${JSON.stringify(rules)}\n\n`;
   }
@@ -137,7 +179,9 @@ function buildRequest(
   changes: string,
   model: string,
   apiKey: string | null,
-  rules: Record<string, unknown>
+  rules: Record<string, unknown>,
+  recentCommits: string[] | undefined,
+  hints: CommitGenerationHints | undefined
 ): { url: string; body: unknown; headers: Record<string, string> } {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -194,10 +238,18 @@ function buildRequest(
         ],
       };
       return { url, body, headers };
-    case "cloudflare":
+    case "cloudflare": {
       url = `${baseUrl.replace(/\/$/, "")}/commit`;
-      body = { diff, changes, rules };
+      const payload: Record<string, unknown> = { diff, changes, rules };
+      if (recentCommits && recentCommits.length > 0) {
+        payload.recent_commits = recentCommits.slice(0, 10);
+      }
+      if (hints && Object.keys(hints).length > 0) {
+        payload.generation_hints = hints;
+      }
+      body = payload;
       return { url, body, headers: { "Content-Type": "application/json" } };
+    }
     default:
       throw new Error(`Unknown provider: ${provider as string}`);
   }
@@ -221,11 +273,10 @@ function parseResponse(provider: LocalProvider, data: unknown): string {
   }
 }
 
-export async function runLocalCommit(
-  messageOnly: boolean,
-  push: boolean,
-  modelFlag?: string
-): Promise<void> {
+export async function runLocalCommit(args: LocalCommitOptions): Promise<void> {
+  const silent = !!(args.hookMode || args.quiet);
+  const log = silent ? createSilentLog() : getUI().log;
+
   if (!isGitRepo()) {
     throw new Error("Not a git repository.");
   }
@@ -241,12 +292,21 @@ export async function runLocalCommit(
   }
 
   const config = getConfig();
-  const excludes = config.excludes ?? [];
-  const diff = getStagedDiff(excludes);
+  const excludes = [...(config.excludes ?? []), ...args.exclude];
+  let diff = getStagedDiff(excludes);
   const changes = getStagedFiles();
-  const model = modelFlag ?? local.model;
 
-  let rules = config.rules ?? {};
+  if (!args.noSmartDiff) {
+    const smartResult = preprocessDiff(diff);
+    diff = smartResult.processedDiff;
+    if (smartResult.summarized.length > 0 && !silent) {
+      log.step(
+        `smart-diff: ${smartResult.summarized.length} file(s) summarized (saved ~${Math.round(smartResult.tokensSaved / 1000)}K tokens)`
+      );
+    }
+  }
+
+  let rules: CommitRules = { ...(await detectCommitlintRules()), ...(config.rules ?? {}) };
   const workspace = detectWorkspace();
   if (workspace) {
     const stagedFiles = changes.trim().split("\n").filter(Boolean);
@@ -257,7 +317,29 @@ export async function runLocalCommit(
     }
   }
 
-  const userContent = buildUserPrompt(changes, diff, rules as Record<string, unknown>);
+  rules = applyCliTypeScopeToRules(rules, args.type, args.scope);
+
+  const recentCommits = args.noContext ? undefined : getRecentBranchCommits(5);
+  const generationHints = generationHintsFromArgs(args.split, args.forceBody);
+
+  const skipInteractive = silent || args.quiet || shouldSkipTTYInteraction(args.hookMode);
+  const skipConfirm =
+    args.dryRun ||
+    args.messageOnly ||
+    silent ||
+    args.quiet ||
+    shouldSkipTTYInteraction(args.hookMode);
+
+  const model = args.model ?? local.model;
+  const modelDisplay = model ?? local.model ?? "default";
+
+  const userContent = buildUserPrompt(
+    changes,
+    diff,
+    Object.keys(rules).length > 0 ? (rules as Record<string, unknown>) : undefined,
+    recentCommits,
+    generationHints
+  );
   const { url, body, headers } = buildRequest(
     local.provider,
     local.baseUrl,
@@ -266,7 +348,9 @@ export async function runLocalCommit(
     changes,
     model,
     local.apiKey,
-    rules as Record<string, unknown>
+    rules as Record<string, unknown>,
+    recentCommits,
+    generationHints
   );
 
   if (!url || url.includes("YOUR-WORKER")) {
@@ -275,11 +359,21 @@ export async function runLocalCommit(
     );
   }
 
-  const res = await fetch(url, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(body),
-  });
+  const spinner = getUI().spinner(`generating commit (${modelDisplay} via ${local.provider})...`);
+  if (!silent) spinner.start();
+
+  const t0 = Date.now();
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+    });
+  } finally {
+    spinner.stop();
+  }
+  const roundTripMs = Date.now() - t0;
 
   if (!res.ok) {
     const text = await res.text();
@@ -289,22 +383,52 @@ export async function runLocalCommit(
   const data = (await res.json()) as unknown;
   let message = parseResponse(local.provider, data);
 
-  message = message
-    .replace(/\\n/g, "\n")
-    .replace(/\\r/g, "")
-    .trim();
+  message = message.replace(/\\n/g, "\n").replace(/\\r/g, "").trim();
 
   if (!message) {
     throw new Error("Failed to generate commit message.");
   }
 
-  if (messageOnly) {
+  const diagnostics =
+    local.provider === "cloudflare" && typeof data === "object" && data !== null
+      ? (data as Record<string, unknown>).diagnostics
+      : undefined;
+  logVerboseDiagnostics((msg) => log.dim(msg), args.verbose, args.quiet, diagnostics, roundTripMs);
+
+  if (args.interactive) {
+    if (shouldSkipTTYInteraction(args.hookMode)) {
+      if (!silent) log.dim("(--interactive ignored: not running in a TTY)");
+    } else {
+      const refineResult = await interactiveRefineMessage(message, { skip: skipInteractive });
+      if (refineResult.action === "abort") {
+        process.exit(0);
+      }
+      message = refineResult.message;
+    }
+  }
+
+  if (args.messageOnly) {
     console.log(message);
     return;
   }
 
+  if (!silent) {
+    displayCommitMessage(message, log);
+  }
+
+  if (args.dryRun) {
+    return;
+  }
+
+  if (args.confirm) {
+    const confirmResult = await confirmCommit("Proceed with commit? [y/N]: ", { skip: skipConfirm });
+    if (confirmResult.action === "abort") {
+      process.exit(0);
+    }
+  }
+
   gitCommit(message);
-  if (push) {
+  if (args.push) {
     gitPush();
   }
 }

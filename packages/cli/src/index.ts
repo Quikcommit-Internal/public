@@ -1,61 +1,85 @@
-import type { CommitRules } from "@quikcommit/shared";
 import { getApiKey, getConfig, saveConfig } from "./config.js";
-import { ApiClient } from "./api.js";
-import { detectCommitlintRules } from "./commitlint.js";
-import {
-  isGitRepo,
-  getStagedDiff,
-  getStagedFiles,
-  hasStagedChanges,
-  getUnstagedFiles,
-  stageAll,
-  gitCommit,
-  gitPush,
-} from "./git.js";
-import { detectWorkspace, autoDetectScope } from "./monorepo.js";
 
 const HELP = `Quikcommit - AI-powered conventional commit messages
 
 Usage:
   qc                    Generate commit message and commit (default)
-  qc --message-only     Generate message only, print to stdout
-  qc --push             Commit and push to origin
   qc pr                 Generate PR description from branch commits
   qc changelog          Generate changelog from commits since last tag
   qc changeset          Automate pnpm changeset with AI
-  qc init               Install prepare-commit-msg hook for auto-generation
+  qc init               Install prepare-commit-msg hook
   qc login              Sign in via browser
   qc logout             Clear local credentials
   qc status             Show auth, plan, usage
   qc team               Team management (info, rules, invite)
+  qc config             Show/set config
 
-Options:
-  -h, --help            Show this help
-  -a, --all             Stage all tracked changes before generating
-  -m, --message-only    Generate message only
-  -p, --push            Commit and push after generating
-  --api-key <key>       Use this API key (overrides credentials file)
-  --base <branch>       Base branch for qc pr, qc changeset (default: main)
-  --create              Create PR with gh CLI after qc pr
-  --from <ref>          Start ref for qc changelog (default: latest tag)
-  --to <ref>            End ref for qc changelog (default: HEAD)
-  --write               Prepend changelog to CHANGELOG.md
-  --version <ver>       Version label for changelog header (default: derived from --to or "<from>-next")
-  --uninstall           Remove Quikcommit hook (qc init --uninstall)
-  --model <id>          Use specific model (e.g. qwen25-coder-32b, llama-3.3-70b)
+Flags:
+  -p, --push            Commit and push
+  -a, --all             Stage all tracked changes first
+  -m, --message-only    Print message only (stdout, no commit)
+  -v, --verbose         Show diagnostics (model, token estimates, rules) + API round-trip ms on stderr
+  -q, --quiet           Minimal output
+  -n, --dry-run         Show message without committing
+  -i, --interactive     Interactive refinement mode
+  -s, --split           Multi-commit split mode
+  -b, --body            Force include body
+  -l, --local           Use local provider
+  -c, --confirm         Ask before committing
+  -t, --type <type>     Force commit type
+  -S, --scope <scope>   Force scope
+  -e, --exclude <pat>   Exclude files from diff (repeatable)
 
-Commands:
-  qc config             Show current config
-  qc config set <k> <v> Set config (model, api_url)
-  qc config reset       Reset to defaults
-  qc upgrade            Open billing page in browser
+  --no-context          Skip commit history context
+  --no-smart-diff       Skip smart diff preprocessing
+  --no-color            Disable colors
+  --model <id>          Use specific model
+  --base <branch>       Base branch for pr/changeset (default: main)
+  --create              Create PR with gh CLI (qc pr --create)
+  --from <ref>          Start ref for changelog
+  --to <ref>            End ref for changelog
+  --write               Write changelog to CHANGELOG.md
+  --hook-mode           Silent mode for git hooks
+
+Compose short flags: qc -ap (stage all + push), qc -apv (+ verbose)
+
+Examples:
+  qc                    # generate and commit
+  qc -p                 # commit and push
+  qc -ap               # stage all, commit, push
+  qc -m | pbcopy       # copy message to clipboard
+  qc -n                 # preview without committing
+  qc -e "*.lock"       # exclude lock files
+  qc -t fix -S auth    # force type and scope
 `;
 
-function parseArgs(args: string[]): {
-  command: "commit" | "login" | "logout" | "status" | "pr" | "changelog" | "init" | "team" | "config" | "upgrade" | "changeset" | "help";
+export interface ParsedArgs {
+  command:
+    | "commit"
+    | "login"
+    | "logout"
+    | "status"
+    | "pr"
+    | "changelog"
+    | "init"
+    | "team"
+    | "config"
+    | "upgrade"
+    | "changeset"
+    | "help";
   all: boolean;
   messageOnly: boolean;
   push: boolean;
+  verbose: boolean;
+  quiet: boolean;
+  dryRun: boolean;
+  interactive: boolean;
+  split: boolean;
+  forceBody: boolean;
+  confirm: boolean;
+  noContext: boolean;
+  noSmartDiff: boolean;
+  local: boolean;
   apiKey?: string;
   base?: string;
   create?: boolean;
@@ -66,191 +90,285 @@ function parseArgs(args: string[]): {
   uninstall?: boolean;
   hookMode?: boolean;
   model?: string;
-  local?: boolean;
-} {
-  let command: "commit" | "login" | "logout" | "status" | "pr" | "changelog" | "init" | "team" | "config" | "upgrade" | "changeset" | "help" = "commit";
-  let all = false;
-  let messageOnly = false;
-  let push = false;
-  let apiKey: string | undefined;
-  let model: string | undefined;
-  let local = false;
-  let base: string | undefined;
-  let create = false;
-  let from: string | undefined;
-  let to: string | undefined;
-  let write = false;
-  let version: string | undefined;
-  let uninstall = false;
-  let hookMode = false;
+  type?: string;
+  scope?: string;
+  exclude: string[];
+  setProvider?: "ollama" | "lmstudio" | "openrouter" | "cloudflare";
+  positionals: string[];
+}
+
+const SHORT_FLAGS: Record<string, keyof ParsedArgs> = {
+  p: "push",
+  a: "all",
+  m: "messageOnly",
+  v: "verbose",
+  q: "quiet",
+  n: "dryRun",
+  i: "interactive",
+  s: "split",
+  b: "forceBody",
+  l: "local",
+  c: "confirm",
+};
+
+const SHORT_FLAGS_WITH_VALUE: Record<string, keyof ParsedArgs> = {
+  t: "type",
+  S: "scope",
+  e: "exclude",
+};
+
+export function parseArgs(args: string[]): ParsedArgs {
+  const result: ParsedArgs = {
+    command: "commit",
+    all: false,
+    messageOnly: false,
+    push: false,
+    verbose: false,
+    quiet: false,
+    dryRun: false,
+    interactive: false,
+    split: false,
+    forceBody: false,
+    confirm: false,
+    noContext: false,
+    noSmartDiff: false,
+    local: false,
+    exclude: [],
+    positionals: [],
+  };
+
+  let subcommandSeen = false;
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
-    if (arg === "-h" || arg === "--help") {
-      command = "help";
-    } else if (arg === "-a" || arg === "--all") {
-      all = true;
-    } else if (arg === "-m" || arg === "--message-only") {
-      messageOnly = true;
-    } else if (arg === "-p" || arg === "--push") {
-      push = true;
-    } else if (arg === "--api-key" && i + 1 < args.length) {
-      apiKey = args[++i];
-    } else if (arg === "--base" && i + 1 < args.length) {
-      base = args[++i];
-    } else if (arg === "--create") {
-      create = true;
-    } else if (arg === "--from" && i + 1 < args.length) {
-      from = args[++i];
-    } else if (arg === "--to" && i + 1 < args.length) {
-      to = args[++i];
-    } else if (arg === "--write") {
-      write = true;
-    } else if (arg === "--version" && i + 1 < args.length) {
-      version = args[++i];
-    } else if (arg === "--uninstall") {
-      uninstall = true;
-    } else if (arg === "--hook-mode") {
-      hookMode = true;
-    } else if (arg === "login") {
-      command = "login";
-    } else if (arg === "logout") {
-      command = "logout";
-    } else if (arg === "status") {
-      command = "status";
-    } else if (arg === "pr") {
-      command = "pr";
-    } else if (arg === "changelog") {
-      command = "changelog";
-    } else if (arg === "init") {
-      command = "init";
-    } else if (arg === "team") {
-      command = "team";
-    } else if (arg === "config") {
-      command = "config";
-    } else if (arg === "upgrade") {
-      command = "upgrade";
-    } else if (arg === "changeset") {
-      command = "changeset";
-    } else if (arg === "--model" && i + 1 < args.length) {
-      model = args[++i];
-    } else if (arg === "--local" || arg === "--use-ollama" || arg === "--use-lmstudio" || arg === "--use-openrouter" || arg === "--use-cloudflare") {
-      local = true;
+    if (arg === undefined) continue;
+
+    // Composed short flags: -ap, -apv, etc.
+    if (arg.startsWith("-") && !arg.startsWith("--") && arg.length > 2) {
+      const chars = [...arg.slice(1)];
+      for (let j = 0; j < chars.length; j++) {
+        const ch = chars[j];
+        if (!ch) continue;
+        if (SHORT_FLAGS[ch]) {
+          const key = SHORT_FLAGS[ch];
+          (result as unknown as Record<string, unknown>)[key] = true;
+        } else if (SHORT_FLAGS_WITH_VALUE[ch]) {
+          if (j < chars.length - 1) {
+            throw new Error(`Flag -${ch} requires a value and must be last in a composed group`);
+          }
+          const val = args[++i];
+          if (!val || (val.startsWith("-") && val.length > 1)) throw new Error(`Flag -${ch} requires a value`);
+          const key = SHORT_FLAGS_WITH_VALUE[ch];
+          if (key === "exclude") {
+            result.exclude.push(val);
+          } else {
+            (result as unknown as Record<string, unknown>)[key] = val;
+          }
+        } else if (ch === "h") {
+          result.command = "help";
+        } else {
+          throw new Error(`Unknown flag: -${ch}`);
+        }
+      }
+      continue;
+    }
+
+    // Single short flags
+    if (arg.length === 2 && arg.startsWith("-") && !arg.startsWith("--")) {
+      const ch = arg[1];
+      if (!ch) continue;
+      if (SHORT_FLAGS[ch]) {
+        (result as unknown as Record<string, unknown>)[SHORT_FLAGS[ch]] = true;
+        continue;
+      }
+      if (SHORT_FLAGS_WITH_VALUE[ch]) {
+        const val = args[++i];
+        if (!val || (val.startsWith("-") && val.length > 1)) {
+          throw new Error(`Flag -${ch} requires a value`);
+        }
+        const key = SHORT_FLAGS_WITH_VALUE[ch];
+        if (key === "exclude") {
+          result.exclude.push(val);
+        } else {
+          (result as unknown as Record<string, unknown>)[key] = val;
+        }
+        continue;
+      }
+      if (ch === "h") {
+        result.command = "help";
+        continue;
+      }
+      throw new Error(`Unknown flag: -${ch}`);
+    }
+
+    // Long flags
+    if (arg === "--help") {
+      result.command = "help";
+    } else if (arg === "--all") {
+      result.all = true;
+    } else if (arg === "--message-only") {
+      result.messageOnly = true;
+    } else if (arg === "--push") {
+      result.push = true;
+    } else if (arg === "--verbose") {
+      result.verbose = true;
+    } else if (arg === "--quiet") {
+      result.quiet = true;
+    } else if (arg === "--dry-run") {
+      result.dryRun = true;
+    } else if (arg === "--interactive") {
+      result.interactive = true;
+    } else if (arg === "--split") {
+      result.split = true;
+    } else if (arg === "--body") {
+      result.forceBody = true;
+    } else if (arg === "--confirm") {
+      result.confirm = true;
+    } else if (arg === "--no-confirm") {
+      result.confirm = false;
+    } else if (arg === "--no-context") {
+      result.noContext = true;
+    } else if (arg === "--no-smart-diff") {
+      result.noSmartDiff = true;
+    } else if (
+      arg === "--local" ||
+      arg === "--use-ollama" ||
+      arg === "--use-lmstudio" ||
+      arg === "--use-openrouter" ||
+      arg === "--use-cloudflare"
+    ) {
+      result.local = true;
       if (arg === "--use-ollama") {
-        saveConfig({ ...getConfig(), provider: "ollama", apiUrl: "http://localhost:11434", model: "codellama" });
+        result.setProvider = "ollama";
       } else if (arg === "--use-lmstudio") {
-        saveConfig({ ...getConfig(), provider: "lmstudio", apiUrl: "http://localhost:1234/v1", model: "default" });
+        result.setProvider = "lmstudio";
       } else if (arg === "--use-openrouter") {
-        saveConfig({ ...getConfig(), provider: "openrouter", apiUrl: "https://openrouter.ai/api/v1", model: "google/gemini-flash-1.5-8b" });
+        result.setProvider = "openrouter";
       } else if (arg === "--use-cloudflare") {
+        result.setProvider = "cloudflare";
+      }
+    } else if (arg === "--api-key" && i + 1 < args.length) {
+      result.apiKey = args[++i];
+    } else if (arg === "--base" && i + 1 < args.length) {
+      result.base = args[++i];
+    } else if (arg === "--create") {
+      result.create = true;
+    } else if (arg === "--from" && i + 1 < args.length) {
+      result.from = args[++i];
+    } else if (arg === "--to" && i + 1 < args.length) {
+      result.to = args[++i];
+    } else if (arg === "--write") {
+      result.write = true;
+    } else if (arg === "--version" && i + 1 < args.length) {
+      result.version = args[++i];
+    } else if (arg === "--uninstall") {
+      result.uninstall = true;
+    } else if (arg === "--hook-mode") {
+      result.hookMode = true;
+    } else if (arg === "--model" && i + 1 < args.length) {
+      result.model = args[++i];
+    } else if (arg === "--type" && i + 1 < args.length) {
+      result.type = args[++i];
+    } else if (arg === "--scope" && i + 1 < args.length) {
+      result.scope = args[++i];
+    } else if (arg === "--exclude" && i + 1 < args.length) {
+      const ex = args[++i];
+      if (ex) result.exclude.push(ex);
+    } else if (arg === "--no-color") {
+      /* handled in ui.ts via argv / env */
+    } else if (arg === "login") {
+      result.command = "login";
+      subcommandSeen = true;
+    } else if (arg === "logout") {
+      result.command = "logout";
+      subcommandSeen = true;
+    } else if (arg === "status") {
+      result.command = "status";
+      subcommandSeen = true;
+    } else if (arg === "pr") {
+      result.command = "pr";
+      subcommandSeen = true;
+    } else if (arg === "changelog") {
+      result.command = "changelog";
+      subcommandSeen = true;
+    } else if (arg === "init") {
+      result.command = "init";
+      subcommandSeen = true;
+    } else if (arg === "team") {
+      result.command = "team";
+      subcommandSeen = true;
+    } else if (arg === "config") {
+      result.command = "config";
+      subcommandSeen = true;
+    } else if (arg === "upgrade") {
+      result.command = "upgrade";
+      subcommandSeen = true;
+    } else if (arg === "changeset") {
+      result.command = "changeset";
+      subcommandSeen = true;
+    } else if (subcommandSeen && !arg.startsWith("-")) {
+      result.positionals.push(arg);
+    }
+  }
+
+  if (result.messageOnly && result.push) {
+    throw new Error("Cannot combine --message-only (-m) with --push (-p)");
+  }
+  if (result.quiet && result.verbose) {
+    throw new Error("Cannot combine --quiet (-q) with --verbose (-v)");
+  }
+  if (result.dryRun && result.push) {
+    throw new Error("Cannot combine --dry-run (-n) with --push (-p). Pick one.");
+  }
+
+  return result;
+}
+
+async function main(): Promise<void> {
+  const argv = process.argv.slice(2);
+  let values: ParsedArgs;
+  try {
+    values = parseArgs(argv);
+  } catch (err) {
+    console.error(err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  }
+
+  const { command, apiKey } = values;
+
+  if (command === "help") {
+    console.log(HELP);
+    return;
+  }
+
+  // Apply provider config side effects here (after help/dispatch, before any command runs).
+  // This ensures --use-* flags don't mutate config when combined with --help.
+  if (values.setProvider) {
+    switch (values.setProvider) {
+      case "ollama":
+        saveConfig({ ...getConfig(), provider: "ollama", apiUrl: "http://localhost:11434", model: "codellama" });
+        break;
+      case "lmstudio":
+        saveConfig({ ...getConfig(), provider: "lmstudio", apiUrl: "http://localhost:1234/v1", model: "default" });
+        break;
+      case "openrouter":
+        saveConfig({
+          ...getConfig(),
+          provider: "openrouter",
+          apiUrl: "https://openrouter.ai/api/v1",
+          model: "google/gemini-flash-1.5-8b",
+        });
+        break;
+      case "cloudflare":
         saveConfig({
           ...getConfig(),
           provider: "cloudflare",
           apiUrl: "https://YOUR-WORKER.workers.dev",
           model: "@cf/qwen/qwen2.5-coder-32b-instruct",
         });
-        console.error(
-          "[qc] Cloudflare provider set. Run: qc config set api_url https://your-worker.workers.dev"
-        );
-      }
+        console.error("[qc] Cloudflare provider set. Run: qc config set api_url https://your-worker.workers.dev");
+        break;
     }
-  }
-
-  return { command, all, messageOnly, push, apiKey, base, create, from, to, write, version, uninstall, hookMode, model, local };
-}
-
-async function runCommit(
-  messageOnly: boolean,
-  push: boolean,
-  apiKeyFlag?: string,
-  hookMode = false,
-  modelFlag?: string,
-  stageAll_?: boolean
-): Promise<void> {
-  const log = hookMode ? () => {} : (msg: string) => console.error(msg);
-
-  if (!isGitRepo()) {
-    log("Error: Not a git repository.");
-    process.exit(1);
-  }
-
-  const config = getConfig();
-  if (stageAll_ || config.autoStage) {
-    stageAll();
-  }
-
-  if (!hasStagedChanges()) {
-    const unstaged = getUnstagedFiles();
-    if (unstaged.length > 0) {
-      log("Error: No staged changes. Use `qc -a` to stage tracked files, or `git add` manually.");
-    } else {
-      log("Error: No changes to commit.");
-    }
-    process.exit(1);
-  }
-
-  const apiKey = apiKeyFlag ?? getApiKey();
-  if (!apiKey) {
-    log("Error: Not authenticated. Run `qc login` first.");
-    process.exit(1);
-  }
-
-  const model = modelFlag ?? config.model;
-  const excludes = config.excludes ?? [];
-  const diff = getStagedDiff(excludes);
-  const changes = getStagedFiles();
-
-  const commitlintRules = await detectCommitlintRules();
-  let rules: CommitRules = { ...commitlintRules, ...(config.rules ?? {}) };
-  const workspace = detectWorkspace();
-  let monorepoScopes: string[] | undefined;
-  if (workspace) {
-    const stagedFiles = changes.trim().split("\n").filter(Boolean);
-    const scope = autoDetectScope(stagedFiles, workspace);
-    if (scope) {
-      monorepoScopes = scope.split(",").map((s) => s.trim());
-      rules = { ...rules, scopes: monorepoScopes };
-    }
-  }
-
-  const client = new ApiClient({ apiKey });
-  try {
-    const teamRules = await client.getTeamRules();
-    if (teamRules && Object.keys(teamRules).length > 0) {
-      log("[qc] Using team rules from org");
-      rules = { ...rules, ...teamRules };
-      // M-3: Intersect monorepo scope with team's allowed scopes instead of replacing
-      if (monorepoScopes && teamRules.scopes && teamRules.scopes.length > 0) {
-        const allowed = new Set(teamRules.scopes);
-        const intersected = monorepoScopes.filter((s) => allowed.has(s));
-        if (intersected.length > 0) rules = { ...rules, scopes: intersected };
-      }
-    }
-  } catch {
-    // Not in a team or API error - use local rules only
-  }
-
-  const { message } = await client.generateCommit(diff, changes, rules, model);
-
-  if (messageOnly) {
-    console.log(message);
-    return;
-  }
-
-  gitCommit(message);
-  if (push) {
-    gitPush();
-  }
-}
-
-async function main(): Promise<void> {
-  const argv = process.argv.slice(2);
-  const values = parseArgs(argv);
-  const { command, messageOnly, push, apiKey } = values;
-
-  if (command === "help") {
-    console.log(HELP);
-    return;
   }
 
   if (command === "login") {
@@ -310,15 +428,13 @@ async function main(): Promise<void> {
 
   if (command === "team") {
     const { team } = await import("./commands/team.js");
-    const positionals = argv.filter((a) => !a.startsWith("-") && a !== "team");
-    await team(positionals[0], positionals.slice(1));
+    await team(values.positionals[0], values.positionals.slice(1));
     return;
   }
 
   if (command === "config") {
     const { config } = await import("./commands/config.js");
-    const positionals = argv.filter((a) => !a.startsWith("-") && a !== "config");
-    config(positionals);
+    config(values.positionals);
     return;
   }
 
@@ -328,25 +444,24 @@ async function main(): Promise<void> {
     return;
   }
 
-  // Local mode: use provider directly (--local or --use-ollama etc.)
   if (values.local) {
     const { runLocalCommit } = await import("./local.js");
-    await runLocalCommit(messageOnly, push, values.model);
+    await runLocalCommit(values);
     return;
   }
 
-  // Auto-fallback: no API key but local provider configured
   const apiKeyToUse = apiKey ?? getApiKey();
   if (!apiKeyToUse) {
     const { getLocalProviderConfig } = await import("./local.js");
     if (getLocalProviderConfig()) {
       const { runLocalCommit } = await import("./local.js");
-      await runLocalCommit(messageOnly, push, values.model);
+      await runLocalCommit(values);
       return;
     }
   }
 
-  await runCommit(messageOnly, push, apiKey, values.hookMode, values.model, values.all);
+  const { runCommit } = await import("./commands/commit.js");
+  await runCommit(values);
 }
 
 main().catch((err) => {

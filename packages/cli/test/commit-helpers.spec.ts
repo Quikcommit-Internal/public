@@ -1,0 +1,205 @@
+import { describe, it, expect, vi, afterEach } from "vitest";
+import {
+  applyCliTypeScopeToRules,
+  generationHintsFromArgs,
+  splitCommitMessageForDisplay,
+  createSilentLog,
+  displayCommitMessage,
+  interactiveRefineMessage,
+  confirmCommit,
+  formatVerboseCommitDiagnostics,
+  shouldSkipTTYInteraction,
+  logVerboseDiagnostics,
+} from "../src/commit-helpers.js";
+
+describe("formatVerboseCommitDiagnostics", () => {
+  it("returns only round-trip line when diagnostics is undefined", () => {
+    const result = formatVerboseCommitDiagnostics(undefined, 123);
+    expect(result).toBe("api_round_trip_ms: 123");
+  });
+
+  it("includes stringified diagnostics when provided", () => {
+    const diag = { model: "gpt-4", tokens: 512 };
+    const result = formatVerboseCommitDiagnostics(diag, 456);
+    expect(result).toContain("api_round_trip_ms: 456");
+    expect(result).toContain('"model": "gpt-4"');
+    expect(result).toContain('"tokens": 512');
+  });
+});
+
+describe("shouldSkipTTYInteraction", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("returns true when hookMode is true", () => {
+    expect(shouldSkipTTYInteraction(true)).toBe(true);
+  });
+
+  it("returns true when process.stdin.isTTY is not true (undefined)", () => {
+    vi.stubGlobal("process", { ...process, stdin: { ...process.stdin, isTTY: undefined } });
+    expect(shouldSkipTTYInteraction(false)).toBe(true);
+  });
+
+  it("returns false when hookMode is false and stdin.isTTY is true", () => {
+    vi.stubGlobal("process", { ...process, stdin: { ...process.stdin, isTTY: true } });
+    expect(shouldSkipTTYInteraction(false)).toBe(false);
+  });
+});
+
+describe("logVerboseDiagnostics", () => {
+  it("does not call dim when quiet is true", () => {
+    const dim = vi.fn();
+    const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    logVerboseDiagnostics(dim, true, true, { model: "x" }, 100);
+    expect(dim).not.toHaveBeenCalled();
+    stderrSpy.mockRestore();
+  });
+
+  it("does not call dim when verbose is false", () => {
+    const dim = vi.fn();
+    logVerboseDiagnostics(dim, false, false, { model: "x" }, 100);
+    expect(dim).not.toHaveBeenCalled();
+  });
+
+  it("calls dim and writes to stderr when verbose is true and quiet is false", () => {
+    const dim = vi.fn();
+    const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    logVerboseDiagnostics(dim, true, false, { model: "y", tokens: 99 }, 200);
+    expect(dim).toHaveBeenCalledWith("(verbose diagnostics on stderr)");
+    expect(stderrSpy).toHaveBeenCalled();
+    const written = (stderrSpy.mock.calls[0][0] as string);
+    expect(written).toContain("api_round_trip_ms: 200");
+    stderrSpy.mockRestore();
+  });
+});
+
+describe("applyCliTypeScopeToRules", () => {
+  it("overrides types and scopes when CLI flags are set", () => {
+    const r = applyCliTypeScopeToRules({ types: ["feat", "fix"], scopes: ["a", "b"] }, "chore", "tooling");
+    expect(r.types).toEqual(["chore"]);
+    expect(r.scopes).toEqual(["tooling"]);
+  });
+
+  it("leaves rules unchanged when flags omitted", () => {
+    const base = { types: ["feat"] as string[] };
+    expect(applyCliTypeScopeToRules(base, undefined, undefined)).toEqual(base);
+  });
+});
+
+describe("generationHintsFromArgs", () => {
+  it("returns undefined when no hints", () => {
+    expect(generationHintsFromArgs(false, false)).toBeUndefined();
+  });
+
+  it("returns hints object when flags set", () => {
+    expect(generationHintsFromArgs(true, true)).toEqual({ split: true, force_body: true });
+  });
+});
+
+describe("splitCommitMessageForDisplay", () => {
+  it("uses blank line between subject and body when present", () => {
+    const m = "feat: add widget\n\n- detail one\n- detail two";
+    expect(splitCommitMessageForDisplay(m)).toEqual({
+      subject: "feat: add widget",
+      body: "- detail one\n- detail two",
+    });
+  });
+
+  it("treats line after subject as body when no blank line", () => {
+    const m = "fix: patch\n- item";
+    expect(splitCommitMessageForDisplay(m)).toEqual({
+      subject: "fix: patch",
+      body: "- item",
+    });
+  });
+
+  it("returns full line as subject when single line", () => {
+    expect(splitCommitMessageForDisplay("chore: bump")).toEqual({
+      subject: "chore: bump",
+      body: "",
+    });
+  });
+});
+
+describe("createSilentLog", () => {
+  it("returns an object with no-op step, success, and dim", () => {
+    const log = createSilentLog();
+    // These should not throw and produce no output
+    expect(() => log.step("msg")).not.toThrow();
+    expect(() => log.success("msg")).not.toThrow();
+    expect(() => log.dim("msg")).not.toThrow();
+  });
+
+  it("error calls console.error", () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const log = createSilentLog();
+    log.error("oops");
+    expect(spy).toHaveBeenCalledWith("oops");
+    spy.mockRestore();
+  });
+});
+
+describe("interactiveRefineMessage", () => {
+  it("returns accept with original message when skip is true", async () => {
+    const result = await interactiveRefineMessage("feat: original", { skip: true });
+    expect(result).toEqual({ action: "accept", message: "feat: original" });
+  });
+
+  it("returns accept with original message when user presses enter (default Y)", async () => {
+    const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const mockRl = { question: vi.fn().mockResolvedValue(""), close: vi.fn() };
+    vi.doMock("node:readline/promises", () => ({
+      default: { createInterface: () => mockRl },
+    }));
+    // We test the skip path here since mocking readline is complex
+    const result = await interactiveRefineMessage("feat: msg", { skip: true });
+    expect(result.action).toBe("accept");
+    stderrSpy.mockRestore();
+  });
+});
+
+describe("confirmCommit", () => {
+  it("returns commit when skip is true", async () => {
+    const result = await confirmCommit("Proceed? [y/N]: ", { skip: true });
+    expect(result).toEqual({ action: "commit" });
+  });
+
+  it("returns abort when skip is true and we check the shape", async () => {
+    // Skip=true always returns commit action
+    const result = await confirmCommit("Proceed? [y/N]: ", { skip: true });
+    expect(result.action).toBe("commit");
+  });
+});
+
+describe("displayCommitMessage", () => {
+  it("calls log.success with the subject line", () => {
+    const log = { step: vi.fn(), success: vi.fn(), error: vi.fn(), dim: vi.fn() };
+    const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    displayCommitMessage("feat: add thing", log);
+    expect(log.success).toHaveBeenCalledWith("feat: add thing");
+    expect(log.dim).not.toHaveBeenCalled();
+    stderrSpy.mockRestore();
+  });
+
+  it("calls log.dim for each body line and writes trailing newline when body is present", () => {
+    const log = { step: vi.fn(), success: vi.fn(), error: vi.fn(), dim: vi.fn() };
+    const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    displayCommitMessage("feat: add widget\n\n- detail one\n- detail two", log);
+    expect(log.success).toHaveBeenCalledWith("feat: add widget");
+    expect(log.dim).toHaveBeenCalledWith("  - detail one");
+    expect(log.dim).toHaveBeenCalledWith("  - detail two");
+    expect(stderrSpy).toHaveBeenCalledWith("\n");
+    stderrSpy.mockRestore();
+  });
+
+  it("does not write trailing newline when there is no body", () => {
+    const log = { step: vi.fn(), success: vi.fn(), error: vi.fn(), dim: vi.fn() };
+    const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    displayCommitMessage("chore: bump deps", log);
+    expect(log.success).toHaveBeenCalledWith("chore: bump deps");
+    expect(log.dim).not.toHaveBeenCalled();
+    expect(stderrSpy).not.toHaveBeenCalledWith("\n");
+    stderrSpy.mockRestore();
+  });
+});

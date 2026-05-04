@@ -178,3 +178,64 @@ export function getFullDiff(base = "main"): string {
     maxBuffer: 10 * 1024 * 1024,
   });
 }
+
+export function getStagedFileCount(): number {
+  const output = execFileSync("git", ["diff", "--cached", "--name-only"], {
+    encoding: "utf-8",
+  });
+  return output.trim().split("\n").filter(Boolean).length;
+}
+
+export function getShortStagedFiles(max = 3): { files: string[]; total: number } {
+  const output = execFileSync("git", ["diff", "--cached", "--name-only"], {
+    encoding: "utf-8",
+  });
+  const all = output.trim().split("\n").filter(Boolean);
+  return { files: all.slice(0, max), total: all.length };
+}
+
+export function getCommitHash(): string {
+  return execFileSync("git", ["rev-parse", "--short", "HEAD"], {
+    encoding: "utf-8",
+  }).trim();
+}
+
+export function getPushStats(): { commits: number; stat: string } | null {
+  try {
+    const branch = execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], {
+      encoding: "utf-8",
+    }).trim();
+    const countOutput = execFileSync(
+      "git",
+      ["rev-list", "--count", `origin/${branch}..HEAD`],
+      { encoding: "utf-8" }
+    ).trim();
+    const parsedCount = parseInt(countOutput, 10);
+    const commits = Number.isFinite(parsedCount) ? parsedCount : 0;
+    const stat = execFileSync(
+      "git",
+      ["diff", "--shortstat", `origin/${branch}..HEAD`],
+      { encoding: "utf-8" }
+    ).trim();
+    return { commits, stat };
+  } catch {
+    return null;
+  }
+}
+
+export function getRecentBranchCommits(count = 5): string[] {
+  try {
+    const output = execFileSync(
+      "git",
+      ["log", "--format=%s%n%b%n---", `--max-count=${count}`, "HEAD"],
+      { encoding: "utf-8", maxBuffer: 1024 * 1024 }
+    );
+    return output
+      .split("---\n")
+      .map((entry) => entry.trim())
+      .filter(Boolean)
+      .slice(0, count);
+  } catch {
+    return [];
+  }
+}

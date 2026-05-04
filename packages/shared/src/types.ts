@@ -12,12 +12,23 @@ export interface CommitRules {
   subjectFullStop?: string;
 }
 
+/** Optional AI prompt hints for commit generation (CLI flags / gateway) */
+export interface CommitGenerationHints {
+  /** Prefer addressing multiple logical commits / how to split staged work */
+  split?: boolean;
+  /** Require a commit body even when the diff looks trivial */
+  force_body?: boolean;
+}
+
 /** API request: generate commit message */
 export interface CommitRequest {
   diff: string;
   changes: string;
   rules?: CommitRules;
   model?: string;
+  recent_commits?: string[];
+  /** Forwarded to AI worker to tune the user prompt */
+  generation_hints?: CommitGenerationHints;
 }
 
 /** API request: generate PR description */
