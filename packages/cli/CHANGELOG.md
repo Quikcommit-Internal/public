@@ -1,5 +1,11 @@
 # @quikcommit/cli
 
+## 7.0.0
+
+### Major Changes
+
+- [#26](https://github.com/Quikcommit-Internal/quikcommit/pull/26) [`d6427af`](https://github.com/Quikcommit-Internal/quikcommit/commit/d6427af3e65f61ebc7abf1bc66c27d43186b5e43) Thanks [@foundquik](https://github.com/foundquik)! - So many changes oops
+
 ## 6.0.0
 
 ### Major Changes
