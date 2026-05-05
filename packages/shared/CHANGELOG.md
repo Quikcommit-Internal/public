@@ -1,5 +1,11 @@
 # @quikcommit/shared
 
+## 8.1.0
+
+### Minor Changes
+
+- [#50](https://github.com/Quikcommit-Internal/quikcommit/pull/50) [`443ce85`](https://github.com/Quikcommit-Internal/quikcommit/commit/443ce8583b018da7f78542b47b6cd90d67298dd7) Thanks [@foundquik](https://github.com/foundquik)! - Fixed bugs and made branches better
+
 ## 8.0.0
 
 ### Major Changes
