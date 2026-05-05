@@ -84,12 +84,13 @@ function isMinified(content: string): boolean {
 export interface SmartDiffResult {
   processedDiff: string;
   summarized: string[];
+  aggressivelySummarized: string[]; // files summarized due to size budget (not noise classification)
   tokensSaved: number;
 }
 
 export function preprocessDiff(diff: string): SmartDiffResult {
   const files = parseDiffIntoFiles(diff);
-  if (files.length === 0) return { processedDiff: diff, summarized: [], tokensSaved: 0 };
+  if (files.length === 0) return { processedDiff: diff, summarized: [], aggressivelySummarized: [], tokensSaved: 0 };
 
   const kept: string[] = [];
   const summarized: string[] = [];
@@ -138,6 +139,186 @@ export function preprocessDiff(diff: string): SmartDiffResult {
   return {
     processedDiff: kept.join(""),
     summarized,
+    aggressivelySummarized: [],
+    tokensSaved,
+  };
+}
+
+/**
+ * Produces a one-line summary placeholder for a code file that was too large
+ * to include inline.
+ */
+function buildFileSummary(file: FileDiff): string {
+  const sizeKB = Math.round(file.content.length / 1024);
+  return `[modified: ${sanitizeFilepath(file.filepath)} — +${file.additions} −${file.deletions} lines, ~${sizeKB}KB]\n`;
+}
+
+/**
+ * Variant of preprocessDiff that applies a two-tier aggressive size-budget
+ * reduction on top of the normal noise-file summarization.
+ *
+ * After the standard preprocessDiff pass, if the remaining diff still exceeds
+ * `maxBytes`, it applies:
+ *   - Tier 1: summarize all "code" files whose raw content exceeds 5 KB
+ *   - Tier 2: if still over budget, summarize all "code" files exceeding 2 KB
+ *   - Final fallback: replace ALL remaining code file content with summaries
+ *
+ * Files aggressively summarized in any tier are reported in
+ * `aggressivelySummarized`.
+ *
+ * @param diff     Raw git diff string
+ * @param maxBytes Budget in bytes for the processedDiff output (default 5 MB)
+ */
+export function preprocessDiffWithSizeBudget(
+  diff: string,
+  maxBytes = 5 * 1024 * 1024
+): SmartDiffResult {
+  const files = parseDiffIntoFiles(diff);
+  if (files.length === 0) {
+    return { processedDiff: diff, summarized: [], aggressivelySummarized: [], tokensSaved: 0 };
+  }
+
+  // Phase 1: standard noise classification (identical to preprocessDiff)
+  type FileEntry = { file: FileDiff; isNoise: boolean; summaryLine: string | null };
+  const entries: FileEntry[] = [];
+  const summarized: string[] = [];
+  let tokensSaved = 0;
+
+  for (const file of files) {
+    const classification = classifyFile(file.filepath);
+    switch (classification) {
+      case "sourcemap":
+        tokensSaved += estimateTokens(file.content);
+        summarized.push(file.filepath);
+        entries.push({ file, isNoise: true, summaryLine: null });
+        break;
+      case "lock":
+        tokensSaved += estimateTokens(file.content);
+        summarized.push(file.filepath);
+        entries.push({
+          file,
+          isNoise: true,
+          summaryLine: `[lock file updated: ${sanitizeFilepath(file.filepath)} (+${file.additions} −${file.deletions} lines)]\n`,
+        });
+        break;
+      case "generated":
+        tokensSaved += estimateTokens(file.content);
+        summarized.push(file.filepath);
+        entries.push({
+          file,
+          isNoise: true,
+          summaryLine: `[generated: ${sanitizeFilepath(file.filepath)} (+${file.additions} −${file.deletions})]\n`,
+        });
+        break;
+      case "vendored":
+        tokensSaved += estimateTokens(file.content);
+        summarized.push(file.filepath);
+        entries.push({
+          file,
+          isNoise: true,
+          summaryLine: `[vendored: ${sanitizeFilepath(file.filepath)} updated]\n`,
+        });
+        break;
+      case "code":
+        if (isMinified(file.content)) {
+          tokensSaved += estimateTokens(file.content);
+          const sizeKB = Math.round(file.content.length / 1024);
+          summarized.push(file.filepath);
+          entries.push({
+            file,
+            isNoise: true,
+            summaryLine: `[minified asset: ${sanitizeFilepath(file.filepath)} (${sizeKB} KB)]\n`,
+          });
+        } else {
+          entries.push({ file, isNoise: false, summaryLine: null });
+        }
+        break;
+    }
+  }
+
+  // Tracks which code files are "aggressively" collapsed (beyond noise).
+  // Map: filepath → summaryLine (the one-liner replacement)
+  const aggressiveMap = new Map<string, string>();
+
+  function buildOutput(): string {
+    const parts: string[] = [];
+    for (const entry of entries) {
+      if (entry.isNoise) {
+        if (entry.summaryLine !== null) parts.push(entry.summaryLine);
+        // sourcemaps have null summaryLine — omitted intentionally
+      } else if (aggressiveMap.has(entry.file.filepath)) {
+        parts.push(aggressiveMap.get(entry.file.filepath)!);
+      } else {
+        parts.push(entry.file.content);
+      }
+    }
+    return parts.join("");
+  }
+
+  // Phase 2: budget-driven tiers (only applied to non-noise code files)
+  const codeEntries = entries.filter((e) => !e.isNoise);
+
+  // Check if we need any aggressive summarization at all
+  let output = buildOutput();
+  if (output.length <= maxBytes) {
+    return {
+      processedDiff: output,
+      summarized,
+      aggressivelySummarized: [],
+      tokensSaved,
+    };
+  }
+
+  // Tier 1: summarize code files > 5 KB
+  const TIER1_THRESHOLD = 5 * 1024;
+  for (const entry of codeEntries) {
+    if (entry.file.content.length > TIER1_THRESHOLD && !aggressiveMap.has(entry.file.filepath)) {
+      tokensSaved += estimateTokens(entry.file.content);
+      aggressiveMap.set(entry.file.filepath, buildFileSummary(entry.file));
+    }
+  }
+
+  output = buildOutput();
+  if (output.length <= maxBytes) {
+    return {
+      processedDiff: output,
+      summarized,
+      aggressivelySummarized: [...aggressiveMap.keys()],
+      tokensSaved,
+    };
+  }
+
+  // Tier 2: summarize code files > 2 KB
+  const TIER2_THRESHOLD = 2 * 1024;
+  for (const entry of codeEntries) {
+    if (entry.file.content.length > TIER2_THRESHOLD && !aggressiveMap.has(entry.file.filepath)) {
+      tokensSaved += estimateTokens(entry.file.content);
+      aggressiveMap.set(entry.file.filepath, buildFileSummary(entry.file));
+    }
+  }
+
+  output = buildOutput();
+  if (output.length <= maxBytes) {
+    return {
+      processedDiff: output,
+      summarized,
+      aggressivelySummarized: [...aggressiveMap.keys()],
+      tokensSaved,
+    };
+  }
+
+  // Final fallback: summarize ALL remaining code files
+  for (const entry of codeEntries) {
+    if (!aggressiveMap.has(entry.file.filepath)) {
+      tokensSaved += estimateTokens(entry.file.content);
+      aggressiveMap.set(entry.file.filepath, buildFileSummary(entry.file));
+    }
+  }
+
+  return {
+    processedDiff: buildOutput(),
+    summarized,
+    aggressivelySummarized: [...aggressiveMap.keys()],
     tokensSaved,
   };
 }

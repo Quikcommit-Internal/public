@@ -16,10 +16,11 @@ import {
   getCurrentBranch,
   getPushStats,
   getRecentBranchCommits,
+  getStagedDiffShortstat,
 } from "../git.js";
 import { detectWorkspace, autoDetectScope } from "../monorepo.js";
 import { getUI } from "../ui.js";
-import { preprocessDiff } from "../smart-diff.js";
+import { preprocessDiffWithSizeBudget } from "../smart-diff.js";
 import {
   applyCliTypeScopeToRules,
   generationHintsFromArgs,
@@ -31,11 +32,13 @@ import {
   displayCommitMessage,
 } from "../commit-helpers.js";
 import type { ParsedArgs } from "../index.js";
+import { runBranchGuard } from "../branch-guard.js";
 
 export async function runCommit(args: ParsedArgs): Promise<void> {
   const { messageOnly, push, apiKey: apiKeyFlag, hookMode, model: modelFlag, all } = args;
   const silent = !!(hookMode || args.quiet);
-  const log = silent ? createSilentLog() : getUI().log;
+  const ui = getUI();
+  const log = silent ? createSilentLog() : ui.log;
 
   if (!isGitRepo()) {
     log.error("Not a git repository.");
@@ -43,6 +46,34 @@ export async function runCommit(args: ParsedArgs): Promise<void> {
   }
 
   const config = getConfig();
+  const excludes = [...(config.excludes ?? []), ...args.exclude];
+
+  const guardResult = await runBranchGuard(
+    {
+      allowProtected: !!(args.allowProtected || config.branch?.allowProtected),
+      autoBranch: !!args.autoBranch,
+      hookMode: !!args.hookMode,
+      apiKey: apiKeyFlag ?? getApiKey() ?? undefined,
+      model: args.model,
+      excludes,
+    },
+    log
+  );
+
+  if (guardResult.action === "abort") {
+    // User aborted — clean exit, nothing to commit.
+    return;
+  }
+  if (guardResult.action === "done") {
+    // Rescue completed — existing commits moved to new branch, nothing to commit.
+    return;
+  }
+  // Item E: exhaustiveness assertion — if a fourth BranchGuardOutcome is ever
+  // added, TypeScript will error here instead of silently falling through.
+  const _exhaustive: "continue" = guardResult.action;
+  void _exhaustive;
+  // guardResult.action === "continue" — fall through to normal commit flow.
+
   if (all || config.autoStage) {
     stageAll();
     const { files, total } = getShortStagedFiles();
@@ -68,17 +99,23 @@ export async function runCommit(args: ParsedArgs): Promise<void> {
   }
 
   const model = modelFlag ?? config.model;
-  const excludes = [...(config.excludes ?? []), ...args.exclude];
   const diff = getStagedDiff(excludes);
   const changes = getStagedFiles();
 
   let processedDiff = diff;
   if (!args.noSmartDiff) {
-    const smartResult = preprocessDiff(diff);
+    // Budget the post-smart-diff payload at 5MB — well under the gateway's 8MB
+    // diff cap, leaving headroom for changes/rules/recent_commits fields.
+    const smartResult = preprocessDiffWithSizeBudget(diff, 5 * 1024 * 1024);
     processedDiff = smartResult.processedDiff;
     if (smartResult.summarized.length > 0) {
       log.step(
         `smart-diff: ${smartResult.summarized.length} file(s) summarized (saved ~${Math.round(smartResult.tokensSaved / 1000)}K tokens)`
+      );
+    }
+    if (smartResult.aggressivelySummarized.length > 0) {
+      log.step(
+        `large-diff: ${smartResult.aggressivelySummarized.length} additional file(s) summarized to fit (commit message may be less specific — consider committing fewer files at a time)`
       );
     }
   }
@@ -123,7 +160,7 @@ export async function runCommit(args: ParsedArgs): Promise<void> {
     args.dryRun || messageOnly || silent || args.quiet || shouldSkipTTYInteraction(args.hookMode);
 
   const modelDisplay = model ?? "default";
-  const spinner = getUI().spinner(`generating commit (${modelDisplay})...`);
+  const spinner = ui.spinner(`generating commit (${modelDisplay})...`);
   if (!silent) spinner.start();
 
   const t0 = Date.now();
@@ -152,7 +189,7 @@ export async function runCommit(args: ParsedArgs): Promise<void> {
     } else {
       const refineResult = await interactiveRefineMessage(message, { skip: skipInteractive });
       if (refineResult.action === "abort") {
-        process.exit(0);
+        return;
       }
       message = refineResult.message;
     }
@@ -163,7 +200,26 @@ export async function runCommit(args: ParsedArgs): Promise<void> {
     return;
   }
 
-  displayCommitMessage(message, log);
+  const stagedPaths = changes.trim().split("\n").filter(Boolean);
+  const short = getStagedDiffShortstat();
+  const tokenEst =
+    diagnostics && typeof diagnostics === "object" && diagnostics !== null && "tokenUsage" in diagnostics
+      ? (diagnostics as { tokenUsage?: { totalEstimated?: number } }).tokenUsage?.totalEstimated
+      : undefined;
+
+  displayCommitMessage(message, {
+    log,
+    isColor: ui.isColor,
+    isTTY: !!process.stderr.isTTY,
+    style: "rich",
+    stagedFiles: stagedPaths,
+    stats: {
+      files: stagedPaths.length,
+      additions: short.additions,
+      deletions: short.deletions,
+      ...(tokenEst !== undefined ? { tokens: tokenEst } : {}),
+    },
+  });
 
   if (args.dryRun) {
     return;
@@ -172,7 +228,7 @@ export async function runCommit(args: ParsedArgs): Promise<void> {
   if (args.confirm) {
     const confirmResult = await confirmCommit("Proceed with commit? [y/N]: ", { skip: skipConfirm });
     if (confirmResult.action === "abort") {
-      process.exit(0);
+      return;
     }
   }
 
@@ -192,3 +248,4 @@ export async function runCommit(args: ParsedArgs): Promise<void> {
     }
   }
 }
+

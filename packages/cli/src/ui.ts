@@ -20,6 +20,7 @@ interface UIFormat {
   bold(msg: string): string;
   commitType(type: string): string;
   commitScope(scope: string): string;
+  accent(msg: string): string;
 }
 
 export interface UI {
@@ -42,6 +43,11 @@ export function hasCliNoColor(): boolean {
   }
 }
 
+/** Best-effort terminal width (columns) for layout. */
+export function getTerminalWidth(): number {
+  return process.stderr.columns ?? process.stdout.columns ?? 80;
+}
+
 export function createUI(options: UIOptions): UI {
   const isColor = options.isTTY && !options.noColor;
 
@@ -55,6 +61,7 @@ export function createUI(options: UIOptions): UI {
     bold: wrap(pc.bold),
     commitType: wrap(pc.cyan),
     commitScope: wrap(pc.yellow),
+    accent: wrap(pc.magenta),
   };
 
   function createSpinner(

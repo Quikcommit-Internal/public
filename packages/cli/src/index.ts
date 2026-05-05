@@ -7,6 +7,7 @@ Usage:
   qc pr                 Generate PR description from branch commits
   qc changelog          Generate changelog from commits since last tag
   qc changeset          Automate pnpm changeset with AI
+  qc branch             Generate branch name + create branch (use --message for description)
   qc init               Install prepare-commit-msg hook
   qc login              Sign in via browser
   qc logout             Clear local credentials
@@ -36,10 +37,21 @@ Flags:
   --model <id>          Use specific model
   --base <branch>       Base branch for pr/changeset (default: main)
   --create              Create PR with gh CLI (qc pr --create)
-  --from <ref>          Start ref for changelog
+  --from <ref>          Start ref for changelog / base ref for qc branch
   --to <ref>            End ref for changelog
   --write               Write changelog to CHANGELOG.md
   --hook-mode           Silent mode for git hooks
+
+Branch flags (qc branch):
+  --message <text>      Generate from a description (no diff needed)
+  --from-commits        Generate from recent commits instead of diff
+  --rescue              Move commits off current protected branch (see docs)
+  --no-switch           Create branch but don't checkout
+  --from <ref>          Create branch from this ref (default: HEAD)
+
+Commit guard flags:
+  --allow-protected     Bypass protected-branch guard for this run
+  --auto-branch         Auto-create branch with generated name (no prompt)
 
 Compose short flags: qc -ap (stage all + push), qc -apv (+ verbose)
 
@@ -66,6 +78,7 @@ export interface ParsedArgs {
     | "config"
     | "upgrade"
     | "changeset"
+    | "branch"
     | "help";
   all: boolean;
   messageOnly: boolean;
@@ -95,6 +108,12 @@ export interface ParsedArgs {
   exclude: string[];
   setProvider?: "ollama" | "lmstudio" | "openrouter" | "cloudflare";
   positionals: string[];
+  message?: string;
+  fromCommits?: boolean;
+  rescue?: boolean;
+  noSwitch?: boolean;
+  allowProtected?: boolean;
+  autoBranch?: boolean;
 }
 
 const SHORT_FLAGS: Record<string, keyof ParsedArgs> = {
@@ -206,10 +225,18 @@ export function parseArgs(args: string[]): ParsedArgs {
       result.command = "help";
     } else if (arg === "--all") {
       result.all = true;
+    } else if (arg === "--allow-protected") {
+      result.allowProtected = true;
+    } else if (arg === "--auto-branch") {
+      result.autoBranch = true;
     } else if (arg === "--message-only") {
       result.messageOnly = true;
+    } else if (arg === "--message" && i + 1 < args.length) {
+      result.message = args[++i];
     } else if (arg === "--push") {
       result.push = true;
+    } else if (arg === "--rescue") {
+      result.rescue = true;
     } else if (arg === "--verbose") {
       result.verbose = true;
     } else if (arg === "--quiet") {
@@ -230,6 +257,8 @@ export function parseArgs(args: string[]): ParsedArgs {
       result.noContext = true;
     } else if (arg === "--no-smart-diff") {
       result.noSmartDiff = true;
+    } else if (arg === "--no-switch") {
+      result.noSwitch = true;
     } else if (
       arg === "--local" ||
       arg === "--use-ollama" ||
@@ -255,6 +284,8 @@ export function parseArgs(args: string[]): ParsedArgs {
       result.create = true;
     } else if (arg === "--from" && i + 1 < args.length) {
       result.from = args[++i];
+    } else if (arg === "--from-commits") {
+      result.fromCommits = true;
     } else if (arg === "--to" && i + 1 < args.length) {
       result.to = args[++i];
     } else if (arg === "--write") {
@@ -290,6 +321,9 @@ export function parseArgs(args: string[]): ParsedArgs {
       subcommandSeen = true;
     } else if (arg === "changelog") {
       result.command = "changelog";
+      subcommandSeen = true;
+    } else if (arg === "branch") {
+      result.command = "branch";
       subcommandSeen = true;
     } else if (arg === "init") {
       result.command = "init";
@@ -416,6 +450,24 @@ async function main(): Promise<void> {
     await changeset({
       base: values.base,
       model: values.model ?? getConfig().model,
+    });
+    return;
+  }
+
+  if (command === "branch") {
+    const { runBranch } = await import("./commands/branch.js");
+    const explicitName = values.positionals[0];
+    await runBranch({
+      explicitName,
+      message: values.message,
+      fromCommits: values.fromCommits,
+      rescue: values.rescue,
+      dryRun: values.dryRun,
+      noSwitch: values.noSwitch,
+      push: values.push,
+      from: values.from,
+      model: values.model,
+      apiKey: values.apiKey,
     });
     return;
   }

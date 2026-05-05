@@ -3,10 +3,13 @@ import { mkdtempSync, writeFileSync, unlinkSync, rmdirSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 
-/** Safe git ref pattern — allows chars valid in branch names, tags, SHA prefixes */
-const SAFE_GIT_REF = /^[a-zA-Z0-9._\-/~:^@]+$/;
+/** Safe git ref pattern — requires alphanumeric first char to prevent flag injection */
+const SAFE_GIT_REF = /^[a-zA-Z0-9][a-zA-Z0-9._\-/~:^@]*$/;
 
 export function validateRef(ref: string, name = "ref"): void {
+  if (ref.startsWith("-")) {
+    throw new Error(`Invalid git ref ${name}: starts with hyphen: "${ref}"`);
+  }
   if (!ref || !SAFE_GIT_REF.test(ref)) {
     throw new Error(`Invalid git ref ${name}: "${ref}"`);
   }
@@ -186,6 +189,25 @@ export function getStagedFileCount(): number {
   return output.trim().split("\n").filter(Boolean).length;
 }
 
+/** Insertion/deletion counts for the staged diff (`git diff --cached --shortstat`). */
+export function getStagedDiffShortstat(): { additions: number; deletions: number } {
+  try {
+    const out = execFileSync("git", ["diff", "--cached", "--shortstat"], {
+      encoding: "utf-8",
+    }).trim();
+    if (!out) return { additions: 0, deletions: 0 };
+    let additions = 0;
+    let deletions = 0;
+    const ins = /(\d+) insertion/.exec(out);
+    const del = /(\d+) deletion/.exec(out);
+    if (ins?.[1]) additions = parseInt(ins[1], 10);
+    if (del?.[1]) deletions = parseInt(del[1], 10);
+    return { additions, deletions };
+  } catch {
+    return { additions: 0, deletions: 0 };
+  }
+}
+
 export function getShortStagedFiles(max = 3): { files: string[]; total: number } {
   const output = execFileSync("git", ["diff", "--cached", "--name-only"], {
     encoding: "utf-8",
@@ -238,4 +260,133 @@ export function getRecentBranchCommits(count = 5): string[] {
   } catch {
     return [];
   }
+}
+
+/** Get the count of commits ahead of the given upstream ref. Returns 0 if upstream missing. */
+export function getCommitsAheadOfUpstream(branch: string, upstream?: string): number {
+  validateRef(branch, "branch");
+  const target = upstream ?? `origin/${branch}`;
+  validateRef(target, "upstream");
+  try {
+    const out = execFileSync(
+      "git",
+      ["rev-list", "--count", `${target}..HEAD`],
+      { encoding: "utf-8" }
+    ).trim();
+    const n = parseInt(out, 10);
+    return Number.isFinite(n) ? n : 0;
+  } catch {
+    return 0;
+  }
+}
+
+/** Returns the upstream branch ref for the given local branch, or null if none. */
+export function getUpstreamRef(branch: string): string | null {
+  validateRef(branch, "branch");
+  try {
+    return (
+      execFileSync(
+        "git",
+        ["rev-parse", "--abbrev-ref", `${branch}@{upstream}`],
+        { encoding: "utf-8" }
+      ).trim() || null
+    );
+  } catch {
+    return null;
+  }
+}
+
+/** Get the default branch from the remote (origin/HEAD), or null. */
+export function getDefaultBranch(): string | null {
+  try {
+    const out = execFileSync(
+      "git",
+      ["symbolic-ref", "refs/remotes/origin/HEAD"],
+      { encoding: "utf-8" }
+    ).trim();
+    const segments = out.split("/");
+    return segments[segments.length - 1] || null;
+  } catch {
+    return null;
+  }
+}
+
+/** Returns true if a branch with this name exists locally OR on origin. */
+export function branchExists(name: string): boolean {
+  validateRef(name, "branch");
+  try {
+    execFileSync("git", ["show-ref", "--verify", "--quiet", `refs/heads/${name}`], {
+      stdio: "pipe",
+    });
+    return true;
+  } catch {
+    // Not local; check remote
+  }
+  try {
+    execFileSync("git", ["show-ref", "--verify", "--quiet", `refs/remotes/origin/${name}`], {
+      stdio: "pipe",
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Stash all changes (including untracked). Returns true if a stash was actually created. */
+export function stashPushIfDirty(message: string): boolean {
+  const status = execFileSync("git", ["status", "--porcelain"], { encoding: "utf-8" }).trim();
+  if (!status) return false;
+
+  execFileSync("git", ["stash", "push", "--include-untracked", "--message", message], {
+    stdio: "pipe",
+  });
+  return true;
+}
+
+/** Pop the most recent stash. Throws if conflicts arise. */
+export function stashPop(): void {
+  execFileSync("git", ["stash", "pop"], { stdio: "pipe" });
+}
+
+/** Hard-reset the current branch to the given ref. */
+export function resetHard(ref: string): void {
+  validateRef(ref, "ref");
+  execFileSync("git", ["reset", "--hard", ref], { stdio: "pipe" });
+}
+
+/** Create a new branch (without checkout). */
+export function createBranch(name: string, base: string = "HEAD"): void {
+  validateRef(name, "name");
+  validateRef(base, "base");
+  execFileSync("git", ["branch", name, base], { stdio: "pipe" });
+}
+
+/** Checkout an existing branch. */
+export function checkoutBranch(name: string): void {
+  validateRef(name, "name");
+  execFileSync("git", ["checkout", name], { stdio: "pipe" });
+}
+
+/** Create and checkout a new branch in one step (`git checkout -b`). */
+export function createAndCheckoutBranch(name: string, base: string = "HEAD"): void {
+  validateRef(name, "name");
+  validateRef(base, "base");
+  execFileSync("git", ["checkout", "-b", name, base], { stdio: "pipe" });
+}
+
+/** Get the current HEAD SHA (full). */
+export function getHeadSha(): string {
+  return execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf-8" }).trim();
+}
+
+/** Push current branch to origin and set upstream. */
+export function gitPushSetUpstream(branch: string): void {
+  validateRef(branch, "branch");
+  execFileSync("git", ["push", "-u", "origin", branch], { stdio: "inherit" });
+}
+
+/** Delete a local branch by name (`git branch -D`). */
+export function deleteBranch(name: string): void {
+  validateRef(name, "name");
+  execFileSync("git", ["branch", "-D", name], { stdio: "pipe" });
 }

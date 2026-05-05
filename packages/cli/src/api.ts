@@ -8,6 +8,8 @@ import type {
   ChangelogRequest,
   ChangesetRequest,
   ChangesetResponse,
+  BranchRequest,
+  BranchResponse,
 } from "@quikcommit/shared";
 
 export interface ApiClientOptions {
@@ -47,6 +49,16 @@ export class ApiClient {
     });
 
     if (!res.ok) {
+      if (res.status === 413) {
+        const errBody = await res.json().catch(() => ({})) as { error?: string; received_bytes?: number; limit_bytes?: number };
+        const sizeHint = errBody.received_bytes
+          ? ` (${Math.round(errBody.received_bytes / 1024)}KB > ${Math.round((errBody.limit_bytes ?? 0) / 1024)}KB limit)`
+          : "";
+        throw new Error(
+          `Diff too large to send${sizeHint}. ` +
+          `Try: qc --exclude '*.lock' --exclude 'dist/**' (or commit fewer files at a time).`
+        );
+      }
       const err = (await res.json().catch(() => ({ error: res.statusText }))) as { error?: string; code?: string };
       if (planRequiredMsg && err.code === "PLAN_REQUIRED") {
         throw new Error(planRequiredMsg);
@@ -109,6 +121,10 @@ export class ApiClient {
       packages: data.packages ?? [],
       summary: data.summary ?? "",
     };
+  }
+
+  async generateBranchName(req: BranchRequest): Promise<BranchResponse> {
+    return this.request<BranchResponse>("/v1/branch", req);
   }
 
   private async fetchJson<T>(

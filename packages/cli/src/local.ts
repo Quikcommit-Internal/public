@@ -16,10 +16,15 @@ import {
   gitCommit,
   gitPush,
   getRecentBranchCommits,
+  getStagedDiffShortstat,
+  branchExists,
+  createBranch,
+  createAndCheckoutBranch,
+  gitPushSetUpstream,
 } from "./git.js";
 import { detectWorkspace, autoDetectScope } from "./monorepo.js";
 import { detectCommitlintRules } from "./commitlint.js";
-import { preprocessDiff } from "./smart-diff.js";
+import { preprocessDiffWithSizeBudget } from "./smart-diff.js";
 import { getUI } from "./ui.js";
 import type { CommitRules } from "@quikcommit/shared";
 import {
@@ -32,6 +37,7 @@ import {
   createSilentLog,
   displayCommitMessage,
 } from "./commit-helpers.js";
+import { ensureUniqueName, sanitizeBranchName, deterministicBranchName } from "./branch-name.js";
 
 /** Subset of CLI flags used by local commit (avoids circular import with `index.ts`). */
 export interface LocalCommitOptions {
@@ -275,7 +281,8 @@ function parseResponse(provider: LocalProvider, data: unknown): string {
 
 export async function runLocalCommit(args: LocalCommitOptions): Promise<void> {
   const silent = !!(args.hookMode || args.quiet);
-  const log = silent ? createSilentLog() : getUI().log;
+  const ui = getUI();
+  const log = silent ? createSilentLog() : ui.log;
 
   if (!isGitRepo()) {
     throw new Error("Not a git repository.");
@@ -297,11 +304,16 @@ export async function runLocalCommit(args: LocalCommitOptions): Promise<void> {
   const changes = getStagedFiles();
 
   if (!args.noSmartDiff) {
-    const smartResult = preprocessDiff(diff);
+    const smartResult = preprocessDiffWithSizeBudget(diff, 5 * 1024 * 1024);
     diff = smartResult.processedDiff;
     if (smartResult.summarized.length > 0 && !silent) {
       log.step(
         `smart-diff: ${smartResult.summarized.length} file(s) summarized (saved ~${Math.round(smartResult.tokensSaved / 1000)}K tokens)`
+      );
+    }
+    if (smartResult.aggressivelySummarized.length > 0 && !silent) {
+      log.step(
+        `large-diff: ${smartResult.aggressivelySummarized.length} additional file(s) summarized to fit (commit message may be less specific)`
       );
     }
   }
@@ -359,7 +371,7 @@ export async function runLocalCommit(args: LocalCommitOptions): Promise<void> {
     );
   }
 
-  const spinner = getUI().spinner(`generating commit (${modelDisplay} via ${local.provider})...`);
+  const spinner = ui.spinner(`generating commit (${modelDisplay} via ${local.provider})...`);
   if (!silent) spinner.start();
 
   const t0 = Date.now();
@@ -401,7 +413,7 @@ export async function runLocalCommit(args: LocalCommitOptions): Promise<void> {
     } else {
       const refineResult = await interactiveRefineMessage(message, { skip: skipInteractive });
       if (refineResult.action === "abort") {
-        process.exit(0);
+        return;
       }
       message = refineResult.message;
     }
@@ -413,7 +425,26 @@ export async function runLocalCommit(args: LocalCommitOptions): Promise<void> {
   }
 
   if (!silent) {
-    displayCommitMessage(message, log);
+    const stagedPaths = changes.trim().split("\n").filter(Boolean);
+    const short = getStagedDiffShortstat();
+    const tokenEst =
+      diagnostics && typeof diagnostics === "object" && diagnostics !== null && "tokenUsage" in diagnostics
+        ? (diagnostics as { tokenUsage?: { totalEstimated?: number } }).tokenUsage?.totalEstimated
+        : undefined;
+
+    displayCommitMessage(message, {
+      log,
+      isColor: ui.isColor,
+      isTTY: !!process.stderr.isTTY,
+      style: "rich",
+      stagedFiles: stagedPaths,
+      stats: {
+        files: stagedPaths.length,
+        additions: short.additions,
+        deletions: short.deletions,
+        ...(tokenEst !== undefined ? { tokens: tokenEst } : {}),
+      },
+    });
   }
 
   if (args.dryRun) {
@@ -423,12 +454,207 @@ export async function runLocalCommit(args: LocalCommitOptions): Promise<void> {
   if (args.confirm) {
     const confirmResult = await confirmCommit("Proceed with commit? [y/N]: ", { skip: skipConfirm });
     if (confirmResult.action === "abort") {
-      process.exit(0);
+      return;
     }
   }
 
   gitCommit(message);
   if (args.push) {
     gitPush();
+  }
+}
+
+export interface LocalBranchOpts {
+  description?: string;
+  diff?: string;
+  changes?: string;
+  recentCommits?: string[];
+  model?: string;
+  noSwitch?: boolean;
+  push?: boolean;
+  baseRef?: string;
+  /** When set, forwarded to Cloudflare Workers `/branch` as `rules` (e.g. constrained types). */
+  rules?: CommitRules;
+}
+
+export type LocalBranchGenerateOpts = Pick<
+  LocalBranchOpts,
+  "description" | "diff" | "changes" | "recentCommits" | "model" | "rules"
+>;
+
+/**
+ * Resolve a unique branch name via the configured local provider (no git branch created).
+ */
+export async function generateLocalBranchName(opts: LocalBranchGenerateOpts): Promise<string> {
+  const local = getLocalProviderConfig();
+  if (!local) {
+    throw new Error("No local provider configured. Set provider with `qc --use-ollama` etc.");
+  }
+
+  const sections: string[] = [];
+  sections.push("Generate a git branch name in the format <type>/<kebab-case-slug>.");
+  sections.push("Type must be one of: feat, fix, refactor, perf, docs, test, chore, ci.");
+  sections.push("Slug: 2-5 words, lowercase, hyphen-separated, max 55 chars.");
+  sections.push("Output ONLY the branch name on a single line. No explanation.");
+  sections.push("");
+  if (opts.description) {
+    sections.push("DESCRIPTION:");
+    sections.push(opts.description);
+  } else if (opts.recentCommits && opts.recentCommits.length > 0) {
+    sections.push("RECENT COMMITS:");
+    for (const c of opts.recentCommits) sections.push(`- ${c}`);
+  } else if (opts.diff) {
+    sections.push("DIFF:");
+    sections.push(opts.diff.slice(0, 30_000));
+  }
+  const userContent = sections.join("\n");
+
+  const model = opts.model ?? local.model;
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (local.apiKey) headers.Authorization = `Bearer ${local.apiKey}`;
+  if (local.provider === "openrouter") {
+    headers["HTTP-Referer"] = "https://github.com/Quikcommit-Internal/public";
+    headers["X-Title"] = "qc - AI Commit Message Generator";
+  }
+
+  let url: string;
+  let body: unknown;
+
+  switch (local.provider) {
+    case "ollama":
+      url = `${local.baseUrl}/api/generate`;
+      body = { model, prompt: userContent, stream: false, options: {} };
+      break;
+    case "lmstudio":
+    case "openrouter":
+    case "custom":
+      url = `${local.baseUrl}/chat/completions`;
+      body = {
+        model,
+        stream: false,
+        messages: [
+          {
+            role: "system",
+            content: "You suggest concise git branch names. Reply with the branch name only.",
+          },
+          { role: "user", content: userContent },
+        ],
+      };
+      break;
+    case "cloudflare":
+      url = `${local.baseUrl.replace(/\/$/, "")}/branch`;
+      body = {
+        diff: opts.diff,
+        changes: opts.changes,
+        recent_commits: opts.recentCommits,
+        description: opts.description,
+        model,
+        cf_model: model,
+        ...(opts.rules ? { rules: opts.rules } : {}),
+      };
+      break;
+  }
+
+  if (!url || url.includes("YOUR-WORKER")) {
+    throw new Error(
+      "Cloudflare provider requires api_url. Run: qc config set api_url https://your-worker.workers.dev"
+    );
+  }
+
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+    });
+  } catch {
+    // Network failure — fall back to deterministic name generation.
+    const fallback = deterministicBranchName({ files: opts.changes?.split("\n").filter(Boolean), description: opts.description });
+    return ensureUniqueName(fallback.name, branchExists);
+  }
+
+  if (!res.ok) {
+    // Provider error — fall back to deterministic name generation.
+    const fallback = deterministicBranchName({ files: opts.changes?.split("\n").filter(Boolean), description: opts.description });
+    return ensureUniqueName(fallback.name, branchExists);
+  }
+
+  const data = (await res.json()) as unknown;
+  let raw: string;
+  if (local.provider === "cloudflare") {
+    const r = data as Record<string, unknown>;
+    const br = r.branch as { name?: string } | undefined;
+    raw = typeof br?.name === "string" ? br.name : "";
+  } else if (local.provider === "ollama") {
+    raw = ((data as Record<string, unknown>).response as string) ?? "";
+  } else {
+    const choices = (data as Record<string, unknown>).choices as
+      | Array<{ message?: { content?: string } }>
+      | undefined;
+    raw = choices?.[0]?.message?.content ?? "";
+  }
+
+  raw = raw.replace(/[\r\n].*$/s, "").trim();
+
+  const sanitized = sanitizeBranchName(raw);
+  if (!sanitized) {
+    // AI returned unparseable name — fall back to deterministic.
+    const fallback = deterministicBranchName({ files: opts.changes?.split("\n").filter(Boolean), description: opts.description });
+    return ensureUniqueName(fallback.name, branchExists);
+  }
+
+  return ensureUniqueName(sanitized, branchExists);
+}
+
+/**
+ * Generate a branch name via the configured local provider (no SaaS auth).
+ */
+export async function runLocalBranch(opts: LocalBranchOpts): Promise<void> {
+  const local = getLocalProviderConfig();
+  if (!local) {
+    throw new Error("No local provider configured. Set provider with `qc --use-ollama` etc.");
+  }
+
+  const ui = getUI();
+  const log = ui.log;
+
+  const spinner = ui.spinner(`generating branch name (${opts.model ?? local.model} via ${local.provider})...`);
+  if (process.stderr.isTTY) spinner.start();
+  let final: string;
+  try {
+    final = await generateLocalBranchName({
+      description: opts.description,
+      diff: opts.diff,
+      changes: opts.changes,
+      recentCommits: opts.recentCommits,
+      model: opts.model,
+      rules: opts.rules,
+    });
+  } catch {
+    // Provider failed entirely — use deterministic fallback.
+    const filesArr = opts.changes?.split("\n").filter(Boolean) ?? [];
+    const fallback = deterministicBranchName({ files: filesArr, description: opts.description });
+    final = ensureUniqueName(fallback.name, branchExists);
+    log.dim("(used local fallback name; AI generation failed)");
+  } finally {
+    spinner.stop();
+  }
+
+  log.success(`branch name: ${final}`);
+
+  const baseRef = opts.baseRef ?? "HEAD";
+
+  if (opts.noSwitch) {
+    createBranch(final, baseRef);
+    log.success(`created ${final} (not switched)`);
+  } else {
+    createAndCheckoutBranch(final, baseRef);
+    log.success(`switched to ${final}`);
+  }
+
+  if (opts.push) {
+    gitPushSetUpstream(final);
+    log.success(`pushed origin/${final}`);
   }
 }

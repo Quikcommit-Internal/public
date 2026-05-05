@@ -230,4 +230,59 @@ describe("parseArgs", () => {
       expect(result.positionals).toEqual([]);
     });
   });
+
+  describe("branch subcommand", () => {
+    it("recognizes branch as a subcommand", () => {
+      const result = parseArgs(["branch"]);
+      expect(result.command).toBe("branch");
+    });
+
+    it("throws when branch -n and -p are composed (dry-run + push conflict)", () => {
+      expect(() => parseArgs(["branch", "-n", "-p"])).toThrow(
+        "Cannot combine --dry-run (-n) with --push (-p). Pick one."
+      );
+    });
+
+    it("throws when branch -np is composed (dry-run + push conflict)", () => {
+      expect(() => parseArgs(["branch", "-np"])).toThrow(
+        "Cannot combine --dry-run (-n) with --push (-p). Pick one."
+      );
+    });
+
+    it("captures explicit name as positional", () => {
+      const result = parseArgs(["branch", "feat/my-name"]);
+      expect(result.command).toBe("branch");
+      expect(result.positionals).toEqual(["feat/my-name"]);
+    });
+
+    it("parses --message", () => {
+      const result = parseArgs(["branch", "--message", "add login"]);
+      expect(result.message).toBe("add login");
+    });
+
+    it("parses --from-commits", () => {
+      const result = parseArgs(["branch", "--from-commits"]);
+      expect(result.fromCommits).toBe(true);
+    });
+
+    it("parses --rescue", () => {
+      const result = parseArgs(["branch", "--rescue"]);
+      expect(result.rescue).toBe(true);
+    });
+
+    it("parses --no-switch", () => {
+      const result = parseArgs(["branch", "--no-switch"]);
+      expect(result.noSwitch).toBe(true);
+    });
+
+    it("parses --allow-protected for commit", () => {
+      const result = parseArgs(["--allow-protected"]);
+      expect(result.allowProtected).toBe(true);
+    });
+
+    it("parses --auto-branch for commit", () => {
+      const result = parseArgs(["--auto-branch"]);
+      expect(result.autoBranch).toBe(true);
+    });
+  });
 });

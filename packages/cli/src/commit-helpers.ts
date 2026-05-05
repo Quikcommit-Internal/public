@@ -1,6 +1,14 @@
 import readline from "node:readline/promises";
 import type { CommitRules, CommitGenerationHints } from "@quikcommit/shared";
 import type { UI } from "./ui.js";
+import {
+  renderBoxedCommit,
+  renderStatsLine,
+  shouldUseRichOutput,
+  getTerminalWidth,
+  renderFileTree,
+  type StatsInput,
+} from "./ui-rich.js";
 
 /** Merge `-t` / `-S` into rules so the model is constrained like HELP describes. */
 export function applyCliTypeScopeToRules(
@@ -96,6 +104,31 @@ export async function interactiveRefineMessage(
 
 export type ConfirmResult = { action: "commit" } | { action: "abort" };
 
+/**
+ * Shared Y/n prompt used by both the branch guard and commands/branch.ts.
+ * Extracted as Item I to prevent the two formerly private prompt functions
+ * (`confirmRescuePrompt` and `confirmBranchRescue`) from drifting.
+ *
+ * @param question - The question text (without the "[Y/n]" suffix).
+ * @param defaultYes - When true (default), an empty answer is treated as "yes".
+ * @returns true when the user confirms, false when the user declines.
+ */
+export async function promptYesNo(
+  question: string,
+  defaultYes: boolean = true
+): Promise<boolean> {
+  const rl = readline.createInterface({ input: process.stdin, output: process.stderr });
+  const suffix = defaultYes ? "[Y/n]" : "[y/N]";
+  try {
+    const answer = (await rl.question(`${question} ${suffix} `)).trim().toLowerCase();
+    if (answer === "n" || answer === "no") return false;
+    if (answer === "y" || answer === "yes") return true;
+    return defaultYes;
+  } finally {
+    rl.close();
+  }
+}
+
 /** @deprecated Use confirmCommit instead. */
 export async function confirmCommitOrExit(prompt: string, opts: { skip: boolean }): Promise<void> {
   const result = await confirmCommit(prompt, opts);
@@ -144,6 +177,20 @@ export function logVerboseDiagnostics(
  */
 export type LogLike = Pick<UI["log"], "step" | "success" | "error" | "dim">;
 
+export interface DisplayOpts {
+  log: LogLike;
+  isColor?: boolean;
+  isTTY?: boolean;
+  style?: "rich" | "compact" | "minimal";
+  stats?: StatsInput;
+  /** Staged paths (e.g. `git diff --cached --name-only`) shown as a tree in rich mode */
+  stagedFiles?: string[];
+}
+
+function isDisplayOpts(opts: LogLike | DisplayOpts): opts is DisplayOpts {
+  return typeof opts === "object" && opts !== null && "log" in opts;
+}
+
 /**
  * Build a silent log object that suppresses all output except errors.
  * Centralises the pattern used identically in runCommit and runLocalCommit.
@@ -158,15 +205,42 @@ export function createSilentLog(): LogLike {
 }
 
 /**
- * Print the commit message to stderr in the standard format:
- * - subject line via log.success
- * - body lines (if any) via log.dim, indented with two spaces
- * - trailing blank line to visually separate from subsequent output
- *
- * Centralises the pattern used identically in runCommit and runLocalCommit.
+ * Print the commit message to stderr. Pass `{ log, isColor, ... }` for boxed rich output
+ * when in a TTY, or pass a {@link LogLike} for plain legacy behavior.
  */
-export function displayCommitMessage(message: string, log: LogLike): void {
+export function displayCommitMessage(message: string, opts: LogLike | DisplayOpts): void {
+  const display: DisplayOpts = isDisplayOpts(opts) ? opts : { log: opts };
+
+  const log = display.log;
   const { subject, body } = splitCommitMessageForDisplay(message);
+
+  const tw = getTerminalWidth();
+  const useRich = shouldUseRichOutput({
+    isTTY: display.isTTY ?? !!process.stderr.isTTY,
+    noColor: display.isColor === false,
+    width: tw,
+    style: display.style ?? "rich",
+  });
+
+  if (useRich) {
+    const tree =
+      display.stagedFiles && display.stagedFiles.length > 0
+        ? renderFileTree(display.stagedFiles, 8)
+        : "";
+    if (tree) {
+      process.stderr.write(tree + "\n");
+    }
+    const boxed = renderBoxedCommit(subject, body, {
+      width: Math.min(Math.max(tw - 4, 60), 80),
+      isColor: !!display.isColor,
+    });
+    process.stderr.write(boxed + "\n");
+    if (display.stats) {
+      process.stderr.write(renderStatsLine(display.stats, !!display.isColor) + "\n");
+    }
+    return;
+  }
+
   log.success(subject);
   if (body) {
     for (const line of body.split("\n")) {

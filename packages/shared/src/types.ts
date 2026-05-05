@@ -160,3 +160,43 @@ export interface ChangesetWorkerResponse {
 }
 
 export type PlanTier = "free" | "pro" | "team" | "scale";
+
+/** API request: generate branch name */
+export interface BranchRequest {
+  diff?: string;
+  changes?: string;
+  recent_commits?: string[];
+  description?: string;
+  rules?: CommitRules;
+  scope_hint?: string;
+  model?: string;
+}
+
+/** API response: generated branch name */
+export interface BranchResponse {
+  name: string; // e.g. "feat/oauth-device-flow"
+  type: string; // e.g. "feat"
+  slug: string; // e.g. "oauth-device-flow"
+  reasoning?: string;
+}
+
+/** AI Worker raw response shape */
+export interface BranchWorkerResponse {
+  branch: {
+    name: string;
+    type: string;
+    slug: string;
+    reasoning?: string;
+  };
+}
+
+/** Branch-related config in .quikcommit.yml or user config */
+export interface BranchConfig {
+  readonly protectedBranches?: string[];
+  readonly detectDefault?: boolean;
+  readonly allowProtected?: boolean;
+  readonly defaultAction?: "branch" | "continue" | "prompt";
+  readonly generation?: {
+    readonly types?: string[];
+  };
+}

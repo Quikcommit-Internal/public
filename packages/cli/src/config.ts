@@ -3,6 +3,7 @@ import { join } from "path";
 import { homedir } from "os";
 import {
   type CommitRules,
+  type BranchConfig,
   CONFIG_DIR,
   CREDENTIALS_FILE,
   CONFIG_FILE,
@@ -55,6 +56,7 @@ export interface LocalConfig {
   model?: string;
   provider?: LocalProvider;
   rules?: CommitRules;
+  branch?: BranchConfig;
 }
 
 export function getConfig(): LocalConfig {
