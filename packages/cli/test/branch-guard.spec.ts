@@ -57,12 +57,18 @@ vi.mock("../src/protected-branch-guard.js", () => ({
 // -------------------------------------------------------------------------
 // UI mock
 // -------------------------------------------------------------------------
-vi.mock("../src/ui.js", () => ({
-  getUI: () => ({
-    spinner: () => ({ start: vi.fn(), stop: vi.fn() }),
-    log: { error: vi.fn(), success: vi.fn(), dim: vi.fn() },
-  }),
-}));
+vi.mock("../src/ui.js", async () => {
+  const { resolveTheme } = await import("../src/ui-theme.js");
+  const theme = resolveTheme({ noColor: true });
+  return {
+    getUI: () => ({
+      spinner: () => ({ start: vi.fn(), stop: vi.fn() }),
+      log: { error: vi.fn(), success: vi.fn(), dim: vi.fn() },
+      isColor: false,
+      theme,
+    }),
+  };
+});
 
 // -------------------------------------------------------------------------
 // API mock — controllable via mockGenerateBranchName

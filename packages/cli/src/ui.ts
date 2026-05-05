@@ -1,10 +1,15 @@
-import pc from "picocolors";
+import { getConfig } from "./config.js";
+import { resolveTheme, type Theme, type ThemeName } from "./ui-theme.js";
 
 const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
 interface UIOptions {
   isTTY: boolean;
   noColor: boolean;
+  themeName?: ThemeName;
+  adaptive?: boolean;
+  /** Keys are commit types (e.g. `feat`), values picocolors names like `cyanBright` */
+  typeColors?: Readonly<Record<string, string>>;
 }
 
 export interface Spinner {
@@ -25,7 +30,9 @@ interface UIFormat {
 
 export interface UI {
   isColor: boolean;
+  /** @deprecated — use theme tokens or log.* instead. @internal */
   format: UIFormat;
+  /** @deprecated — use createStageSpinner from ui-rich.ts instead. */
   spinner(message: string, write?: (s: string) => void): Spinner;
   log: {
     step(msg: string): void;
@@ -33,6 +40,7 @@ export interface UI {
     error(msg: string): void;
     dim(msg: string): void;
   };
+  theme: Theme;
 }
 
 export function hasCliNoColor(): boolean {
@@ -50,18 +58,23 @@ export function getTerminalWidth(): number {
 
 export function createUI(options: UIOptions): UI {
   const isColor = options.isTTY && !options.noColor;
-
-  const wrap = (fn: (s: string) => string) => (s: string) => (isColor ? fn(s) : s);
+  const theme = resolveTheme({
+    name: options.themeName,
+    adaptive: options.adaptive,
+    noColor: !isColor,
+    typeColors: options.typeColors,
+  });
 
   const format: UIFormat = {
-    step: (msg) => `${isColor ? pc.dim("›") : "›"} ${isColor ? pc.dim(msg) : msg}`,
-    success: (msg) => `${isColor ? pc.green("✓") : "✓"} ${msg}`,
-    error: (msg) => `${isColor ? pc.red("✗") : "✗"} ${msg}`,
-    dim: wrap(pc.dim),
-    bold: wrap(pc.bold),
-    commitType: wrap(pc.cyan),
-    commitScope: wrap(pc.yellow),
-    accent: wrap(pc.magenta),
+    step: (msg) => (isColor ? `${theme.step("›")} ${theme.dim(msg)}` : `› ${msg}`),
+    success: (msg) => (isColor ? `${theme.success("✓")} ${msg}` : `✓ ${msg}`),
+    error: (msg) => (isColor ? `${theme.error("✗")} ${msg}` : `✗ ${msg}`),
+    dim: (msg) => (isColor ? theme.dim(msg) : msg),
+    bold: (msg) => (isColor ? theme.strong(msg) : msg),
+    commitType: (t) =>
+      isColor ? (theme.type[t] ?? theme.type.feat ?? ((s: string) => s))(t) : t,
+    commitScope: (scope) => (isColor ? theme.scope(scope) : scope),
+    accent: (msg) => (isColor ? theme.inlineCode(msg) : msg),
   };
 
   function createSpinner(
@@ -77,7 +90,7 @@ export function createUI(options: UIOptions): UI {
         if (!options.isTTY) return;
         interval = setInterval(() => {
           const f = SPINNER_FRAMES[frame++ % SPINNER_FRAMES.length];
-          write(`\r${format.step(message)} ${isColor ? pc.cyan(f) : f}`);
+          write(`\r${format.step(message)} ${isColor ? theme.spinner.aiGenerate(f) : f}`);
         }, 80);
       },
       stop(finalMessage?: string) {
@@ -102,16 +115,20 @@ export function createUI(options: UIOptions): UI {
     dim: (msg: string) => process.stderr.write(format.dim(msg) + "\n"),
   };
 
-  return { isColor, format, spinner: createSpinner, log };
+  return { isColor, format, spinner: createSpinner, log, theme };
 }
 
 let _defaultUI: UI | undefined;
 
 export function getUI(): UI {
   if (!_defaultUI) {
+    const cfg = getConfig();
     _defaultUI = createUI({
       isTTY: !!process.stderr.isTTY,
       noColor: !!process.env.NO_COLOR || hasCliNoColor(),
+      themeName: cfg.ui?.theme,
+      adaptive: cfg.ui?.adaptive !== false,
+      typeColors: cfg.ui?.type_colors,
     });
   }
   return _defaultUI;

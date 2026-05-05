@@ -33,6 +33,7 @@ import {
 } from "../commit-helpers.js";
 import type { ParsedArgs } from "../index.js";
 import { runBranchGuard } from "../branch-guard.js";
+import { createStageSpinner, flashSuccess, buildUIContext } from "../ui-rich.js";
 
 export async function runCommit(args: ParsedArgs): Promise<void> {
   const { messageOnly, push, apiKey: apiKeyFlag, hookMode, model: modelFlag, all } = args;
@@ -40,6 +41,8 @@ export async function runCommit(args: ParsedArgs): Promise<void> {
   const ui = getUI();
   const log = silent ? createSilentLog() : ui.log;
 
+  // Precondition exits: these fire before any async/spinner work.
+  // Kept as process.exit(1) (not throws) to preserve ✗-formatted error output.
   if (!isGitRepo()) {
     log.error("Not a git repository.");
     process.exit(1);
@@ -56,6 +59,7 @@ export async function runCommit(args: ParsedArgs): Promise<void> {
       apiKey: apiKeyFlag ?? getApiKey() ?? undefined,
       model: args.model,
       excludes,
+      noAnimate: args.noAnimate,
     },
     log
   );
@@ -158,7 +162,13 @@ export async function runCommit(args: ParsedArgs): Promise<void> {
     args.dryRun || messageOnly || silent || args.quiet || shouldSkipTTYInteraction(args.hookMode);
 
   const modelDisplay = model ?? "default";
-  const spinner = ui.spinner(`generating commit (${modelDisplay})...`);
+  const uiCtx = buildUIContext(ui, config, args);
+  const boxStyle = args.boxStyleOverride ?? config.ui?.box?.style ?? "gradient";
+  const spinner = createStageSpinner({
+    stage: "aiGenerate",
+    message: `generating commit (${modelDisplay})...`,
+    ...uiCtx,
+  });
   if (!silent) spinner.start();
 
   const t0 = Date.now();
@@ -211,6 +221,10 @@ export async function runCommit(args: ParsedArgs): Promise<void> {
     isTTY: !!process.stderr.isTTY,
     style: "rich",
     stagedFiles: stagedPaths,
+    boxStyle,
+    autoEmphasis: config.ui?.box?.auto_emphasis ?? true,
+    theme: ui.theme,
+    boxWidth: typeof config.ui?.box?.width === "number" ? config.ui.box.width : undefined,
     stats: {
       files: stagedPaths.length,
       additions: short.additions,
@@ -233,17 +247,40 @@ export async function runCommit(args: ParsedArgs): Promise<void> {
   gitCommit(message);
   const hash = getCommitHash();
   const branch = getCurrentBranch();
-  log.step(`[${branch} ${hash}] committed`);
+  if (!silent) {
+    await flashSuccess({
+      message: `✓ committed   ${branch} · ${hash}`,
+      settledMessage: `${ui.theme.success("✓ committed")}${ui.theme.dim(`   ${branch} · ${hash}`)}`,
+      theme: ui.theme,
+      animate: uiCtx.animate,
+      isTTY: !!process.stderr.isTTY,
+    });
+  }
 
   if (push) {
     // Capture stats BEFORE push — after push, origin is caught up and the range is empty.
     const pushStats = getPushStats();
     log.step(`pushing to origin/${branch}...`);
     gitPush();
-    if (pushStats) {
-      log.success(`pushed ${pushStats.commits} commit(s) · ${pushStats.stat}`);
-    } else {
-      log.success("pushed");
+    if (!silent) {
+      if (pushStats) {
+        await flashSuccess({
+          message: `✓ pushed ${pushStats.commits} commit(s) · ${pushStats.stat}`,
+          settledMessage: `${ui.theme.success("✓ pushed")}${ui.theme.dim(
+            ` ${pushStats.commits} commit(s) · ${pushStats.stat}`
+          )}`,
+          theme: ui.theme,
+          animate: uiCtx.animate,
+          isTTY: !!process.stderr.isTTY,
+        });
+      } else {
+        await flashSuccess({
+          message: "✓ pushed",
+          theme: ui.theme,
+          animate: uiCtx.animate,
+          isTTY: !!process.stderr.isTTY,
+        });
+      }
     }
   }
 }

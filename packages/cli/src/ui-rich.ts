@@ -1,170 +1,209 @@
-import pc from "picocolors";
+/**
+ * ui-rich.ts — rich terminal output: spinners, flash success, UIContext.
+ *
+ * Layout/box-rendering helpers have been extracted to ui-layout.ts.
+ * This file re-exports everything from ui-layout.ts for backward compatibility
+ * so existing imports of `from "./ui-rich.js"` continue to work unchanged.
+ */
+
 import { getTerminalWidth as getTermWidth } from "./ui.js";
+import type { Theme } from "./ui-theme.js";
+import type { UI, Spinner } from "./ui.js";
+import { stripAnsi } from "./ui-layout.js";
+
+// Re-export layout helpers for backward compatibility
+export {
+  stripAnsi,
+  splitCommitForBox,
+  renderFileTree,
+  renderStatsLine,
+  renderBoxedCommit,
+  shouldUseRichOutput,
+  boxedLine,
+  wrapLine,
+  MIN_BOX_WIDTH,
+  PADDING,
+} from "./ui-layout.js";
+
+export type {
+  ParsedHeader,
+  FileTreeOpts,
+  StatsInput,
+  BoxStyle,
+  BoxOpts,
+  RichDecisionOpts,
+} from "./ui-layout.js";
 
 export { getTermWidth as getTerminalWidth };
 
-const HEADER_RX = /^([a-z]+)(?:\(([^)]+)\))?(!)?:\s*(.*)$/;
+// ---------------------------------------------------------------------------
+// UIContext — shared snapshot of UI state, eliminates repeated config threading
+// ---------------------------------------------------------------------------
 
-export interface ParsedHeader {
-  type: string | null;
-  scope: string | null;
-  subject: string;
-  breaking: boolean;
+export interface UIContext {
+  theme: Theme;
+  animate: "tasteful" | "full" | "none";
+  isTTY: boolean;
+  isColor: boolean;
+  asciiFallback: boolean;
+  uniform: boolean;
 }
 
-export function splitCommitForBox(message: string): ParsedHeader {
-  const firstLine = message.split("\n")[0] ?? "";
-  const m = firstLine.match(HEADER_RX);
-  if (!m) return { type: null, scope: null, subject: firstLine, breaking: false };
+export function buildUIContext(
+  ui: UI,
+  config: { ui?: { animate?: "tasteful" | "full" | "none"; spinner?: string } },
+  args: { noAnimate?: boolean }
+): UIContext {
   return {
-    type: m[1] ?? null,
-    scope: m[2] ?? null,
-    breaking: m[3] === "!",
-    subject: m[4] ?? "",
+    theme: ui.theme,
+    animate: args.noAnimate ? "none" : (config.ui?.animate ?? "tasteful"),
+    isTTY: !!process.stderr.isTTY,
+    isColor: ui.isColor,
+    asciiFallback: !ui.isColor,
+    uniform: config.ui?.spinner === "uniform",
   };
 }
 
-export function renderFileTree(files: string[], maxFiles: number): string {
-  if (files.length === 0) return "";
-  const lines: string[] = [];
-  const display = files.slice(0, maxFiles);
-  const overflow = Math.max(0, files.length - maxFiles);
+// ---------------------------------------------------------------------------
+// Stage spinner
+// ---------------------------------------------------------------------------
 
-  for (let i = 0; i < display.length; i++) {
-    const isLast = i === display.length - 1 && overflow === 0;
-    const connector = isLast ? "└─" : "├─";
-    lines.push(`    ${connector} ${display[i]}`);
-  }
+export type SpinnerStage =
+  | "aiGenerate"
+  | "gitOp"
+  | "localProvider"
+  | "smartDiff"
+  | "branchGen";
 
-  if (overflow > 0) {
-    lines.push(`    └─ +${overflow} more files`);
-  }
-
-  return lines.join("\n");
+interface StageGlyphConfig {
+  frames: string[];
+  intervalMs: number;
+  themeKey: keyof Theme["spinner"];
 }
 
-export interface BoxOpts {
-  width: number;
-  isColor: boolean;
-}
+const STAGE_CONFIG: Record<SpinnerStage, StageGlyphConfig> = {
+  aiGenerate: {
+    frames: ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"],
+    intervalMs: 80,
+    themeKey: "aiGenerate",
+  },
+  branchGen: {
+    frames: ["◰", "◳", "◲", "◱"],
+    intervalMs: 85,
+    themeKey: "branchGen",
+  },
+  localProvider: {
+    frames: ["◐", "◓", "◑", "◒"],
+    intervalMs: 100,
+    themeKey: "localProvider",
+  },
+  gitOp: {
+    frames: ["←", "↖", "↑", "↗", "→", "↘", "↓", "↙"],
+    intervalMs: 90,
+    themeKey: "gitOp",
+  },
+  smartDiff: {
+    frames: ["▏", "▎", "▍", "▌", "▋", "▊", "▉", "▊", "▋", "▌", "▍", "▎"],
+    intervalMs: 70,
+    themeKey: "smartDiff",
+  },
+};
 
-const MIN_BOX_WIDTH = 60;
+const ASCII_FRAMES = ["|", "/", "-", "\\"];
 
-function wrapLine(text: string, width: number): string[] {
-  if (text.length <= width) return [text];
-  const result: string[] = [];
-  let remaining = text;
-  while (remaining.length > width) {
-    let breakAt = remaining.lastIndexOf(" ", width);
-    if (breakAt < width / 2) breakAt = width;
-    result.push(remaining.slice(0, breakAt));
-    remaining = remaining.slice(breakAt).trimStart();
-  }
-  if (remaining) result.push(remaining);
-  return result;
-}
-
-export function stripAnsi(s: string): string {
-  // Strip ANSI SGR sequences for visible-length padding in boxes.
-  // Covers picocolors output: bold (\x1b[1m/\x1b[22m), colors (\x1b[3Xm/\x1b[3Xm), resets (\x1b[39m).
-  // eslint-disable-next-line no-control-regex -- intentional ESC (U+001B) prefix in CSI pattern
-  return s.replace(/\x1b\[[0-9;]*m/g, "");
-}
-
-function boxedLine(content: string, innerWidth: number, isColor: boolean): string {
-  const visibleLen = stripAnsi(content).length;
-  const padding = " ".repeat(Math.max(0, innerWidth - visibleLen));
-  const border = isColor ? pc.dim("│") : "│";
-  return `  ${border}  ${content}${padding}  ${border}`;
-}
-
-export function renderBoxedCommit(header: string, body: string, opts: BoxOpts): string {
-  if (opts.width < MIN_BOX_WIDTH) {
-    const lines = [header.split("\n")[0] ?? header];
-    if (body) lines.push("", body);
-    return lines.join("\n");
-  }
-
-  // Layout math:
-  //   top border = "  ╭" + "─".repeat(opts.width - 2) + "╮"  → visible length = opts.width + 2
-  //   inner line = "  │  " + content + padding + "  │"
-  //                = 2 + 1 + 2 + innerWidth + 2 + 1 = innerWidth + 8
-  // For alignment: innerWidth + 8 = opts.width + 2  → innerWidth = opts.width - 6
-  const innerWidth = opts.width - 6;
-  const horiz = opts.width - 2;
-  const top =
-    "  " +
-    (opts.isColor ? pc.dim("╭" + "─".repeat(horiz) + "╮") : "╭" + "─".repeat(horiz) + "╮");
-  const bottom =
-    "  " +
-    (opts.isColor ? pc.dim("╰" + "─".repeat(horiz) + "╯") : "╰" + "─".repeat(horiz) + "╯");
-
-  const parsed = splitCommitForBox(header);
-  let firstLineStyled: string;
-  if (parsed.type && parsed.scope) {
-    const bare = `${parsed.type}(${parsed.scope})${parsed.breaking ? "!" : ""}: ${parsed.subject}`;
-    firstLineStyled = opts.isColor
-      ? `${pc.bold(pc.cyan(parsed.type))}(${pc.bold(pc.yellow(parsed.scope))})${parsed.breaking ? pc.bold(pc.red("!")) : ""}: ${parsed.subject}`
-      : bare;
-  } else if (parsed.type) {
-    const bare = `${parsed.type}${parsed.breaking ? "!" : ""}: ${parsed.subject}`;
-    firstLineStyled = opts.isColor
-      ? `${pc.bold(pc.cyan(parsed.type))}${parsed.breaking ? pc.bold(pc.red("!")) : ""}: ${parsed.subject}`
-      : bare;
-  } else {
-    firstLineStyled = header.split("\n")[0] ?? header;
-  }
-
-  const lines: string[] = [];
-  const headerParts = wrapLine(firstLineStyled, innerWidth);
-  for (let i = 0; i < headerParts.length; i++) {
-    const indent = i === 0 ? "" : "  ";
-    lines.push(boxedLine(indent + (headerParts[i] ?? ""), innerWidth, opts.isColor));
-  }
-
-  if (body) {
-    lines.push(boxedLine("", innerWidth, opts.isColor));
-    for (const bline of body.split("\n")) {
-      const trimmed = bline.trim();
-      if (!trimmed) continue;
-      const rendered = trimmed.replace(/^[-*]\s+/, opts.isColor ? `${pc.green("•")} ` : "• ");
-      const wrapped = wrapLine(rendered, innerWidth);
-      for (let i = 0; i < wrapped.length; i++) {
-        lines.push(boxedLine((i === 0 ? "" : "  ") + (wrapped[i] ?? ""), innerWidth, opts.isColor));
-      }
-    }
-  }
-
-  return [top, ...lines, bottom].join("\n");
-}
-
-export interface StatsInput {
-  files: number;
-  additions: number;
-  deletions: number;
-  tokens?: number;
-}
-
-export function renderStatsLine(stats: StatsInput, isColor: boolean): string {
-  const parts: string[] = [];
-  parts.push(`${stats.files} files`);
-  parts.push(`+${stats.additions} \u2212${stats.deletions}`);
-  if (stats.tokens !== undefined) parts.push(`${stats.tokens} tokens`);
-  const text = parts.join(" · ");
-  return isColor ? `    ${pc.dim(text)}` : `    ${text}`;
-}
-
-export interface RichDecisionOpts {
+export interface SpinnerOptions {
+  stage: SpinnerStage;
+  message: string;
+  theme: Theme;
+  animate: "tasteful" | "full" | "none";
   isTTY: boolean;
-  noColor: boolean;
-  width: number;
-  style: "rich" | "compact" | "minimal";
+  isColor: boolean;
+  asciiFallback?: boolean;
+  write?: (s: string) => void;
+  /** When true, every stage uses the aiGenerate glyph set (`ui.spinner: uniform`). */
+  uniform?: boolean;
 }
 
-export function shouldUseRichOutput(opts: RichDecisionOpts): boolean {
-  if (!opts.isTTY) return false;
-  if (opts.noColor) return false;
-  if (opts.style !== "rich") return false;
-  if (opts.width < MIN_BOX_WIDTH) return false;
-  return true;
+export function createStageSpinner(opts: SpinnerOptions): Spinner {
+  const origCfg = STAGE_CONFIG[opts.stage];
+  const cfg = opts.uniform
+    ? {
+        frames: STAGE_CONFIG.aiGenerate.frames,
+        intervalMs: STAGE_CONFIG.aiGenerate.intervalMs,
+        themeKey: origCfg.themeKey,
+      }
+    : origCfg;
+
+  const intervalMs = Math.max(16, Math.round(cfg.intervalMs * (opts.animate === "full" ? 0.55 : 1)));
+
+  const frames = !opts.isColor && opts.asciiFallback ? ASCII_FRAMES : cfg.frames;
+  const colorize =
+    opts.isColor && opts.animate !== "none" ? opts.theme.spinner[cfg.themeKey] : (s: string) => s;
+  const dim = opts.theme.dim;
+  const write = opts.write ?? ((s: string) => process.stderr.write(s));
+
+  let frame = 0;
+  let interval: ReturnType<typeof setInterval> | null = null;
+
+  return {
+    start() {
+      if (interval) return;
+      if (!opts.isTTY) return;
+      if (opts.animate === "none") return;
+      interval = setInterval(() => {
+        const f = frames[frame++ % frames.length];
+        write(`\r${dim("›")} ${dim(opts.message)} ${colorize(f)}`);
+      }, intervalMs);
+    },
+    stop(finalMessage?: string) {
+      if (interval) {
+        clearInterval(interval);
+        interval = null;
+      }
+      if (opts.isTTY) {
+        write("\r\x1b[2K");
+      }
+      if (finalMessage) {
+        write(finalMessage + "\n");
+      }
+    },
+  };
 }
+
+// ---------------------------------------------------------------------------
+// Flash success
+// ---------------------------------------------------------------------------
+
+export interface FlashOptions {
+  message: string;
+  /** If set, this string (may include ANSI) is printed after animated flash settles */
+  settledMessage?: string;
+  theme: Theme;
+  animate: "tasteful" | "full" | "none";
+  isTTY: boolean;
+  flashMs?: number;
+  write?: (s: string) => void;
+}
+
+export async function flashSuccess(opts: FlashOptions): Promise<void> {
+  const write = opts.write ?? ((s: string) => process.stderr.write(s));
+  const animate = opts.animate !== "none" && opts.isTTY;
+  const rawFallback = opts.settledMessage ?? opts.theme.success(opts.message);
+  // Strip ANSI from the fallback when not animating (non-TTY / piped output)
+  // to prevent color codes leaking into non-terminal consumers.
+  const fallbackLine = animate ? rawFallback : stripAnsi(rawFallback);
+
+  if (!animate) {
+    write(fallbackLine + "\n");
+    return;
+  }
+
+  // Write flash WITHOUT a trailing newline so the cursor stays on the same line.
+  // After the delay we erase the current line and write the settled message.
+  // This avoids cursor-up (\x1b[1A) which corrupts output when called in sequence.
+  write(opts.theme.success(opts.message));
+  await new Promise((r) => setTimeout(r, opts.flashMs ?? 200));
+  write("\r\x1b[2K");
+  write((opts.settledMessage ?? opts.message) + "\n");
+}
+

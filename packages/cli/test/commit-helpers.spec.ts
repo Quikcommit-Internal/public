@@ -12,6 +12,7 @@ import {
   logVerboseDiagnostics,
   promptYesNo,
 } from "../src/commit-helpers.js";
+import { stripAnsi } from "../src/ui-rich.js";
 
 describe("formatVerboseCommitDiagnostics", () => {
   it("returns only round-trip line when diagnostics is undefined", () => {
@@ -177,16 +178,13 @@ describe("promptYesNo", () => {
     expect(promptYesNo.length).toBe(1);
   });
 
-  it("returns true for 'y' input", async () => {
-    // Stub readline to return "y"
-    const mockRl = { question: vi.fn().mockResolvedValue("y"), close: vi.fn() };
-    vi.doMock("node:readline/promises", () => ({
-      default: { createInterface: () => mockRl },
-    }));
-    // Since doMock requires a re-import, test via the integration path.
-    // The contract is verified in branch-guard.spec.ts which calls runBranchGuard
-    // with a readline mock that returns "y" and expects confirm to succeed.
-    expect(true).toBe(true); // nominal assertion to keep test discoverable
+  it("is an async function accepting (question, defaultYes?) with defaultYes defaulting to true", () => {
+    // Validates function shape without invoking readline (which would hang in non-TTY env).
+    // Behavioral tests (actual y/n responses) are covered in branch-guard.spec.ts via
+    // integration tests that use mocked readline.
+    expect(promptYesNo.constructor.name).toBe("AsyncFunction");
+    // .length is the number of required parameters (defaultYes is optional, so length = 1)
+    expect(promptYesNo.length).toBe(1);
   });
 });
 
@@ -196,9 +194,10 @@ describe("confirmCommit", () => {
     expect(result).toEqual({ action: "commit" });
   });
 
-  it("returns abort when skip is true and we check the shape", async () => {
-    // Skip=true always returns commit action
+  it("result shape has action discriminant field", async () => {
     const result = await confirmCommit("Proceed? [y/N]: ", { skip: true });
+    // Ensures the discriminated union shape is correct
+    expect(Object.keys(result)).toContain("action");
     expect(result.action).toBe("commit");
   });
 });
@@ -279,6 +278,34 @@ describe("displayCommitMessage rich mode", () => {
       expect(combined).toContain("x.ts");
       expect(combined).toContain("├─");
       expect(combined).toContain("╭");
+    } finally {
+      stderrSpy.mockRestore();
+      Object.defineProperty(process.stderr, "columns", { value: origCols, configurable: true });
+    }
+  });
+});
+
+describe("displayCommitMessage box style passthrough", () => {
+  it("passes boxStyle=double to renderBoxedCommit when configured", () => {
+    const writes: string[] = [];
+    const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation((chunk) => {
+      writes.push(String(chunk));
+      return true;
+    });
+    const origCols = process.stderr.columns;
+    try {
+      Object.defineProperty(process.stderr, "columns", { value: 100, configurable: true });
+      displayCommitMessage("feat(x): test", {
+        log: { step: () => {}, success: () => {}, error: () => {}, dim: () => {} },
+        isColor: true,
+        isTTY: true,
+        style: "rich",
+        boxStyle: "double",
+        autoEmphasis: false,
+      });
+      const combined = writes.join("");
+      expect(stripAnsi(combined)).toContain("feat(x): test");
+      expect(combined).toContain("╔");
     } finally {
       stderrSpy.mockRestore();
       Object.defineProperty(process.stderr, "columns", { value: origCols, configurable: true });

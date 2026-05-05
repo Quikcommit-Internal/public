@@ -4,6 +4,7 @@ import { homedir } from "os";
 import {
   type CommitRules,
   type BranchConfig,
+  type UIConfig,
   CONFIG_DIR,
   CREDENTIALS_FILE,
   CONFIG_FILE,
@@ -57,6 +58,7 @@ export interface LocalConfig {
   provider?: LocalProvider;
   rules?: CommitRules;
   branch?: BranchConfig;
+  ui?: UIConfig;
 }
 
 export function getConfig(): LocalConfig {

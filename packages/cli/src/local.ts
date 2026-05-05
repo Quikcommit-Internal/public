@@ -23,6 +23,7 @@ import {
   gitPushSetUpstream,
   getPushStats,
   getCurrentBranch,
+  getCommitHash,
 } from "./git.js";
 import { detectWorkspace, autoDetectScope } from "./monorepo.js";
 import { detectCommitlintRules } from "./commitlint.js";
@@ -40,6 +41,7 @@ import {
   displayCommitMessage,
 } from "./commit-helpers.js";
 import { ensureUniqueName, sanitizeBranchName, deterministicBranchName } from "./branch-name.js";
+import { createStageSpinner, flashSuccess, buildUIContext } from "./ui-rich.js";
 
 /** Subset of CLI flags used by local commit (avoids circular import with `index.ts`). */
 export interface LocalCommitOptions {
@@ -59,6 +61,9 @@ export interface LocalCommitOptions {
   quiet: boolean;
   hookMode?: boolean;
   dryRun: boolean;
+  /** From ParsedArgs — disables spinner animation / success flash */
+  noAnimate?: boolean;
+  boxStyleOverride?: "rounded" | "gradient" | "double" | "none";
 }
 
 const CONFIG_PATH = join(homedir(), CONFIG_DIR);
@@ -302,6 +307,8 @@ export async function runLocalCommit(args: LocalCommitOptions): Promise<void> {
 
   const config = getConfig();
   const excludes = [...(config.excludes ?? []), ...args.exclude];
+  const uiCtx = buildUIContext(ui, config, args);
+  const boxStyle = args.boxStyleOverride ?? config.ui?.box?.style ?? "gradient";
   let diff = getStagedDiff(excludes);
   const changes = getStagedFiles();
 
@@ -373,7 +380,11 @@ export async function runLocalCommit(args: LocalCommitOptions): Promise<void> {
     );
   }
 
-  const spinner = ui.spinner(`generating commit (${modelDisplay} via ${local.provider})...`);
+  const spinner = createStageSpinner({
+    stage: "localProvider",
+    message: `generating commit (${modelDisplay} via ${local.provider})...`,
+    ...uiCtx,
+  });
   if (!silent) spinner.start();
 
   const t0 = Date.now();
@@ -440,6 +451,10 @@ export async function runLocalCommit(args: LocalCommitOptions): Promise<void> {
       isTTY: !!process.stderr.isTTY,
       style: "rich",
       stagedFiles: stagedPaths,
+      boxStyle,
+      autoEmphasis: config.ui?.box?.auto_emphasis ?? true,
+      theme: ui.theme,
+      boxWidth: typeof config.ui?.box?.width === "number" ? config.ui.box.width : undefined,
       stats: {
         files: stagedPaths.length,
         additions: short.additions,
@@ -462,17 +477,41 @@ export async function runLocalCommit(args: LocalCommitOptions): Promise<void> {
 
   gitCommit(message);
   const branch = getCurrentBranch();
-  log.step(`[${branch} committed]`);
+  const hash = getCommitHash();
+  if (!silent) {
+    await flashSuccess({
+      message: `✓ committed   ${branch} · ${hash}`,
+      settledMessage: `${ui.theme.success("✓ committed")}${ui.theme.dim(`   ${branch} · ${hash}`)}`,
+      theme: ui.theme,
+      animate: uiCtx.animate,
+      isTTY: uiCtx.isTTY,
+    });
+  }
 
   if (args.push) {
     // Capture stats BEFORE push — after push, origin is caught up and the range is empty.
     const pushStats = getPushStats();
     log.step(`pushing to origin/${branch}...`);
     gitPush();
-    if (pushStats) {
-      log.success(`pushed ${pushStats.commits} commit(s) · ${pushStats.stat}`);
-    } else {
-      log.success("pushed");
+    if (!silent) {
+      if (pushStats) {
+        await flashSuccess({
+          message: `✓ pushed ${pushStats.commits} commit(s) · ${pushStats.stat}`,
+          settledMessage: `${ui.theme.success("✓ pushed")}${ui.theme.dim(
+            ` ${pushStats.commits} commit(s) · ${pushStats.stat}`
+          )}`,
+          theme: ui.theme,
+          animate: uiCtx.animate,
+          isTTY: uiCtx.isTTY,
+        });
+      } else {
+        await flashSuccess({
+          message: "✓ pushed",
+          theme: ui.theme,
+          animate: uiCtx.animate,
+          isTTY: uiCtx.isTTY,
+        });
+      }
     }
   }
 }
@@ -488,6 +527,7 @@ export interface LocalBranchOpts {
   baseRef?: string;
   /** When set, forwarded to Cloudflare Workers `/branch` as `rules` (e.g. constrained types). */
   rules?: CommitRules;
+  noAnimate?: boolean;
 }
 
 export type LocalBranchGenerateOpts = Pick<
@@ -631,8 +671,14 @@ export async function runLocalBranch(opts: LocalBranchOpts): Promise<void> {
 
   const ui = getUI();
   const log = ui.log;
+  const config = getConfig();
+  const branchUiCtx = buildUIContext(ui, config, { noAnimate: opts.noAnimate });
 
-  const spinner = ui.spinner(`generating branch name (${opts.model ?? local.model} via ${local.provider})...`);
+  const spinner = createStageSpinner({
+    stage: "branchGen",
+    message: `generating branch name (${opts.model ?? local.model} via ${local.provider})...`,
+    ...branchUiCtx,
+  });
   if (process.stderr.isTTY) spinner.start();
   let final: string;
   try {

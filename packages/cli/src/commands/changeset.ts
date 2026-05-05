@@ -7,7 +7,6 @@ import {
   getGitRoot,
   getChangedFilesSince,
   getOnlineLog,
-  getFullDiff,
 } from "../git.js";
 import { getPackageForFile } from "../monorepo.js";
 import type { WorkspaceInfo } from "../monorepo.js";
@@ -140,7 +139,9 @@ export async function changeset(options: {
 
   const changedFiles = getChangedFilesSince(base);
   if (changedFiles.length === 0) {
-    console.error(`No changes detected vs ${base}.`);
+    console.error(`No commits with file changes detected on this branch vs ${base}.`);
+    console.error(`Tip: \`qc changeset\` requires committed changes (not just staged files).`);
+    console.error(`     Commit first with \`qc\`, then run \`qc changeset\`.`);
     process.exit(1);
   }
 
@@ -153,8 +154,19 @@ export async function changeset(options: {
   }
 
   const commits = getOnlineLog(base);
-  const diff = getFullDiff(base);
   const commitCount = commits.split("\n").filter(Boolean).length;
+
+  // For changeset bump classification the AI needs to understand WHAT changed
+  // (commits + file list) and HOW MUCH (stat), but not the full line-by-line diff.
+  // Sending the full diff overflows the 32K model context on large branches.
+  // Strategy: use diff --stat (compact) + full diff with aggressive size budget.
+  const { preprocessDiffWithSizeBudget } = await import("../smart-diff.js");
+  const { getDiffStat, getFullDiff } = await import("../git.js");
+  const diffStat = getDiffStat(base);
+  const rawDiff = getFullDiff(base);
+  const { processedDiff } = preprocessDiffWithSizeBudget(rawDiff, 60_000);
+  // Prepend the stat summary so the AI always sees the high-level picture
+  const diff = `DIFF STAT:\n${diffStat}\n\nDETAILED DIFF (may be summarized for large changes):\n${processedDiff}`;
 
   console.error(
     `Analyzing changes vs ${base}... ${commitCount} commit(s), ${packageNames.length} package(s) changed`

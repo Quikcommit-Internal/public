@@ -285,4 +285,25 @@ describe("parseArgs", () => {
       expect(result.autoBranch).toBe(true);
     });
   });
+
+  describe("UI flags", () => {
+    it("parses --no-animate", () => {
+      const result = parseArgs(["--no-animate"]);
+      expect(result.noAnimate).toBe(true);
+    });
+
+    it("parses --style rounded", () => {
+      const result = parseArgs(["--style", "rounded"]);
+      expect(result.boxStyleOverride).toBe("rounded");
+    });
+
+    it("parses --style none", () => {
+      const result = parseArgs(["--style", "none"]);
+      expect(result.boxStyleOverride).toBe("none");
+    });
+
+    it("rejects --style with invalid value", () => {
+      expect(() => parseArgs(["--style", "weird"])).toThrow(/--style/);
+    });
+  });
 });

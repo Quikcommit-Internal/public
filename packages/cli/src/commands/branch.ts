@@ -18,6 +18,7 @@ import {
 import { finalizeBranchName, sanitizeBranchName, deterministicBranchName } from "../branch-name.js";
 import { promptYesNo } from "../commit-helpers.js";
 import { getUI } from "../ui.js";
+import { createStageSpinner } from "../ui-rich.js";
 
 export interface BranchOptions {
   explicitName?: string;
@@ -30,6 +31,7 @@ export interface BranchOptions {
   from?: string;
   model?: string;
   apiKey?: string;
+  noAnimate?: boolean;
 }
 
 function branchGenerationRules(cfg: LocalConfig): CommitRules | undefined {
@@ -47,6 +49,9 @@ function finalizeGeneratedBranchName(raw: string): string {
 export async function runBranch(opts: BranchOptions): Promise<void> {
   const ui = getUI();
   const log = ui.log;
+  const config = getConfig();
+  const animate = opts.noAnimate ? "none" : (config.ui?.animate ?? "tasteful");
+  const uniformSpinner = config.ui?.spinner === "uniform";
 
   if (!isGitRepo()) {
     log.error("Not a git repository.");
@@ -54,7 +59,6 @@ export async function runBranch(opts: BranchOptions): Promise<void> {
   }
 
   const baseRef = opts.from ?? "HEAD";
-  const config = getConfig();
   const model = opts.model ?? config.model;
   const genRules = branchGenerationRules(config);
 
@@ -88,7 +92,16 @@ export async function runBranch(opts: BranchOptions): Promise<void> {
       const recent = getRecentBranchCommits(state.commitsAhead);
       const apiKey = opts.apiKey ?? getApiKey();
       if (apiKey) {
-        const spinner = ui.spinner(`generating branch name (${model ?? "default"})...`);
+        const spinner = createStageSpinner({
+          stage: "branchGen",
+          message: `generating branch name (${model ?? "default"})...`,
+          theme: ui.theme,
+          animate,
+          isTTY: !!process.stderr.isTTY,
+          isColor: ui.isColor,
+          asciiFallback: !ui.isColor,
+          uniform: uniformSpinner,
+        });
         if (process.stderr.isTTY) spinner.start();
         try {
           const client = new ApiClient({ apiKey });
@@ -119,7 +132,16 @@ export async function runBranch(opts: BranchOptions): Promise<void> {
             "Not authenticated. Run `qc login` first, or configure a local provider for `--rescue`."
           );
         }
-        const spinner = ui.spinner(`generating branch name (${model ?? "default"} via local)...`);
+        const spinner = createStageSpinner({
+          stage: "branchGen",
+          message: `generating branch name (${model ?? "default"} via local)...`,
+          theme: ui.theme,
+          animate,
+          isTTY: !!process.stderr.isTTY,
+          isColor: ui.isColor,
+          asciiFallback: !ui.isColor,
+          uniform: uniformSpinner,
+        });
         if (process.stderr.isTTY) spinner.start();
         try {
           try {
@@ -233,13 +255,23 @@ export async function runBranch(opts: BranchOptions): Promise<void> {
         push: opts.push,
         baseRef,
         rules: genRules,
+        noAnimate: opts.noAnimate,
       });
       return;
     }
     throw new Error("Not authenticated. Run `qc login` first, or provide --message.");
   }
 
-  const spinner = ui.spinner(`generating branch name (${model ?? "default"})...`);
+  const spinner = createStageSpinner({
+    stage: "branchGen",
+    message: `generating branch name (${model ?? "default"})...`,
+    theme: ui.theme,
+    animate,
+    isTTY: !!process.stderr.isTTY,
+    isColor: ui.isColor,
+    asciiFallback: !ui.isColor,
+    uniform: uniformSpinner,
+  });
   if (process.stderr.isTTY) spinner.start();
   let result: { name: string; type: string; slug: string };
   try {

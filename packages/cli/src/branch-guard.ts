@@ -34,6 +34,7 @@ import {
 } from "./branch-name.js";
 import { getUI } from "./ui.js";
 import { promptYesNo } from "./commit-helpers.js";
+import { createStageSpinner, buildUIContext } from "./ui-rich.js";
 
 export type BranchGuardOutcome = "continue" | "done" | "abort";
 
@@ -49,6 +50,7 @@ export interface BranchGuardArgs {
   model?: string;
   excludes?: string[];
   branchRules?: { types?: string[] };
+  noAnimate?: boolean;
 }
 
 /**
@@ -178,8 +180,14 @@ export async function runBranchGuard(
     generateLocalBranchNameFn = generateLocalBranchName;
   }
 
+  const guardUiCtx = buildUIContext(ui, config, args);
+
   // Spinner wraps only the actual network/inference call.
-  const spinner = ui.spinner(`generating branch name...`);
+  const spinner = createStageSpinner({
+    stage: "branchGen",
+    message: "generating branch name...",
+    ...guardUiCtx,
+  });
   if (process.stderr.isTTY) spinner.start();
   let rawName: string;
   let usedFallback = false;

@@ -4,6 +4,7 @@ import { resolve } from "path";
 export default defineConfig({
   test: {
     globals: true,
+    setupFiles: ["./test/setup-env.ts"],
   },
   resolve: {
     alias: {

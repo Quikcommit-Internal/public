@@ -55,18 +55,23 @@ vi.mock("../../src/monorepo.js", () => ({
   autoDetectScope: () => null,
 }));
 
-vi.mock("../../src/ui.js", () => ({
-  getUI: () => ({
-    log: {
-      error: vi.fn(),
-      success: vi.fn(),
-      step: vi.fn(),
-      dim: vi.fn(),
-    },
-    spinner: () => ({ start: vi.fn(), stop: vi.fn() }),
-    isColor: false,
-  }),
-}));
+vi.mock("../../src/ui.js", async () => {
+  const { resolveTheme } = await import("../../src/ui-theme.js");
+  const theme = resolveTheme({ noColor: true });
+  return {
+    getUI: () => ({
+      log: {
+        error: vi.fn(),
+        success: vi.fn(),
+        step: vi.fn(),
+        dim: vi.fn(),
+      },
+      spinner: () => ({ start: vi.fn(), stop: vi.fn() }),
+      isColor: false,
+      theme,
+    }),
+  };
+});
 
 vi.mock("../../src/smart-diff.js", () => ({
   preprocessDiff: (d: string) => ({ processedDiff: d, summarized: [], aggressivelySummarized: [], tokensSaved: 0 }),

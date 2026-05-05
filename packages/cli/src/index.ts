@@ -6,8 +6,8 @@ Usage:
   qc                    Generate commit message and commit (default)
   qc pr                 Generate PR description from branch commits
   qc changelog          Generate changelog from commits since last tag
-  qc changeset          Automate pnpm changeset with AI
-  qc branch             Generate branch name + create branch (use --message for description)
+  qc changeset          Generate changesets from branch commits (pnpm monorepo)
+  qc branch             Generate and create a named branch from changes
   qc init               Install prepare-commit-msg hook
   qc login              Sign in via browser
   qc logout             Clear local credentials
@@ -15,11 +15,13 @@ Usage:
   qc team               Team management (info, rules, invite)
   qc config             Show/set config
 
-Flags:
+Run \`qc <command> -h\` for command-specific help.
+
+Commit flags:
   -p, --push            Commit and push
-  -a, --all             Stage all tracked changes first
+  -a, --all             Stage all files (modified + untracked) first
   -m, --message-only    Print message only (stdout, no commit)
-  -v, --verbose         Show diagnostics (model, token estimates, rules) + API round-trip ms on stderr
+  -v, --verbose         Show diagnostics (model, tokens, latency)
   -q, --quiet           Minimal output
   -n, --dry-run         Show message without committing
   -i, --interactive     Interactive refinement mode
@@ -30,28 +32,15 @@ Flags:
   -t, --type <type>     Force commit type
   -S, --scope <scope>   Force scope
   -e, --exclude <pat>   Exclude files from diff (repeatable)
-
   --no-context          Skip commit history context
   --no-smart-diff       Skip smart diff preprocessing
   --no-color            Disable colors
+  --no-animate          Disable spinner animation and success flash
+  --style <name>        Box style: rounded | gradient | double | none
   --model <id>          Use specific model
-  --base <branch>       Base branch for pr/changeset (default: main)
-  --create              Create PR with gh CLI (qc pr --create)
-  --from <ref>          Start ref for changelog / base ref for qc branch
-  --to <ref>            End ref for changelog
-  --write               Write changelog to CHANGELOG.md
   --hook-mode           Silent mode for git hooks
-
-Branch flags (qc branch):
-  --message <text>      Generate from a description (no diff needed)
-  --from-commits        Generate from recent commits instead of diff
-  --rescue              Move commits off current protected branch (see docs)
-  --no-switch           Create branch but don't checkout
-  --from <ref>          Create branch from this ref (default: HEAD)
-
-Commit guard flags:
-  --allow-protected     Bypass protected-branch guard for this run
-  --auto-branch         Auto-create branch with generated name (no prompt)
+  --allow-protected     Bypass protected-branch guard
+  --auto-branch         Auto-create branch (no prompt) when on protected branch
 
 Compose short flags: qc -ap (stage all + push), qc -apv (+ verbose)
 
@@ -64,6 +53,86 @@ Examples:
   qc -e "*.lock"       # exclude lock files
   qc -t fix -S auth    # force type and scope
 `;
+
+const HELP_PR = `qc pr — Generate a PR description from branch commits
+
+Usage:
+  qc pr                 Generate PR description and print to stdout
+  qc pr --create        Generate and open a PR via \`gh\` CLI
+
+Flags:
+  --base <branch>       Base branch to compare against (default: main)
+  --create              Create the PR with \`gh pr create\` (requires gh CLI)
+  --model <id>          Use specific model
+
+Examples:
+  qc pr                 # print PR description
+  qc pr --create        # create the PR directly
+  qc pr --base develop  # compare against develop
+`;
+
+const HELP_CHANGELOG = `qc changelog — Generate a changelog from commits since last tag
+
+Usage:
+  qc changelog          Print changelog entry to stdout
+  qc changelog --write  Prepend to CHANGELOG.md
+
+Flags:
+  --from <ref>          Start ref (default: latest tag)
+  --to <ref>            End ref (default: HEAD)
+  --write               Write/prepend to CHANGELOG.md
+  --version <ver>       Version label for header (default: derived from --to)
+  --model <id>          Use specific model
+
+Examples:
+  qc changelog                     # print changelog since last tag
+  qc changelog --write             # prepend to CHANGELOG.md
+  qc changelog --from v1.0.0       # since a specific tag
+`;
+
+const HELP_CHANGESET = `qc changeset — Generate pnpm changesets from branch commits
+
+Usage:
+  qc changeset          Analyze commits on current branch vs base, generate .changeset/ file
+
+Requires: commits ahead of base branch (not just staged files).
+Tip: commit your changes first with \`qc\`, then run \`qc changeset\`.
+
+Flags:
+  --base <branch>       Base branch to compare against (default: main)
+  --model <id>          Use specific model
+
+Examples:
+  qc changeset                     # changeset from commits vs main
+  qc changeset --base develop      # compare against develop
+`;
+
+const HELP_BRANCH = `qc branch — Generate and create a branch with an AI-generated name
+
+Usage:
+  qc branch                     Name from staged/unstaged diff
+  qc branch <name>              Use explicit name (skip AI)
+  qc branch --message "..."     Name from a description (no diff needed)
+  qc branch --from-commits      Name from recent commit history
+  qc branch --rescue            Move commits off a protected branch
+
+Flags:
+  --message <text>      Generate name from a description
+  --from-commits        Use commit log instead of diff for naming
+  --rescue              Move existing commits off protected branch to new branch
+  --no-switch           Create branch but don't checkout
+  --from <ref>          Base from this ref (default: HEAD)
+  -p, --push            Push immediately and set upstream
+  -n, --dry-run         Show generated name without creating
+
+Examples:
+  qc branch                         # name from current changes
+  qc branch -m "add oauth login"    # name from description
+  qc branch feat/my-feature         # explicit name
+  qc branch --rescue                # move commits off main
+  qc branch -np                     # dry-run (show name only)
+`;
+
 
 export interface ParsedArgs {
   command:
@@ -114,6 +183,9 @@ export interface ParsedArgs {
   noSwitch?: boolean;
   allowProtected?: boolean;
   autoBranch?: boolean;
+  noAnimate?: boolean;
+  boxStyleOverride?: "rounded" | "gradient" | "double" | "none";
+  helpFor?: string;
 }
 
 const SHORT_FLAGS: Record<string, keyof ParsedArgs> = {
@@ -184,6 +256,7 @@ export function parseArgs(args: string[]): ParsedArgs {
             (result as unknown as Record<string, unknown>)[key] = val;
           }
         } else if (ch === "h") {
+          if (result.command !== "commit") result.helpFor = result.command;
           result.command = "help";
         } else {
           throw new Error(`Unknown flag: -${ch}`);
@@ -214,6 +287,7 @@ export function parseArgs(args: string[]): ParsedArgs {
         continue;
       }
       if (ch === "h") {
+        if (result.command !== "commit") result.helpFor = result.command;
         result.command = "help";
         continue;
       }
@@ -222,6 +296,7 @@ export function parseArgs(args: string[]): ParsedArgs {
 
     // Long flags
     if (arg === "--help") {
+      if (result.command !== "commit") result.helpFor = result.command;
       result.command = "help";
     } else if (arg === "--all") {
       result.all = true;
@@ -307,6 +382,16 @@ export function parseArgs(args: string[]): ParsedArgs {
       if (ex) result.exclude.push(ex);
     } else if (arg === "--no-color") {
       /* handled in ui.ts via argv / env */
+    } else if (arg === "--no-animate") {
+      result.noAnimate = true;
+    } else if (arg === "--style" && i + 1 < args.length) {
+      const v = args[++i];
+      if (v !== "rounded" && v !== "gradient" && v !== "double" && v !== "none") {
+        throw new Error(
+          `Invalid --style value: ${v}. Must be: rounded | gradient | double | none.`
+        );
+      }
+      result.boxStyleOverride = v;
     } else if (arg === "login") {
       result.command = "login";
       subcommandSeen = true;
@@ -371,7 +456,13 @@ async function main(): Promise<void> {
   const { command, apiKey } = values;
 
   if (command === "help") {
-    console.log(HELP);
+    const subHelp: Record<string, string> = {
+      pr: HELP_PR,
+      changelog: HELP_CHANGELOG,
+      changeset: HELP_CHANGESET,
+      branch: HELP_BRANCH,
+    };
+    console.log(values.helpFor && subHelp[values.helpFor] ? subHelp[values.helpFor] : HELP);
     return;
   }
 
@@ -468,6 +559,7 @@ async function main(): Promise<void> {
       from: values.from,
       model: values.model,
       apiKey: values.apiKey,
+      noAnimate: values.noAnimate,
     });
     return;
   }

@@ -190,6 +190,20 @@ export interface BranchWorkerResponse {
   };
 }
 
+/** UI / visual polish config. Used in .quikcommit.yml and ~/.config/qc/config.json. */
+export interface UIConfig {
+  readonly theme?: "vibrant" | "muted" | "mono";
+  readonly adaptive?: boolean;
+  readonly box?: {
+    readonly style?: "rounded" | "gradient" | "double" | "none";
+    readonly auto_emphasis?: boolean;
+    readonly width?: number | "auto";
+  };
+  readonly animate?: "tasteful" | "full" | "none";
+  readonly spinner?: "per-stage" | "uniform";
+  readonly type_colors?: Readonly<Record<string, string>>;
+}
+
 /** Branch-related config in .quikcommit.yml or user config */
 export interface BranchConfig {
   readonly protectedBranches?: string[];

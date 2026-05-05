@@ -1,12 +1,15 @@
 import readline from "node:readline/promises";
 import type { CommitRules, CommitGenerationHints } from "@quikcommit/shared";
 import type { UI } from "./ui.js";
+import { getUI } from "./ui.js";
+import type { Theme } from "./ui-theme.js";
 import {
   renderBoxedCommit,
   renderStatsLine,
   shouldUseRichOutput,
   getTerminalWidth,
   renderFileTree,
+  type BoxStyle,
   type StatsInput,
 } from "./ui-rich.js";
 
@@ -185,6 +188,12 @@ export interface DisplayOpts {
   stats?: StatsInput;
   /** Staged paths (e.g. `git diff --cached --name-only`) shown as a tree in rich mode */
   stagedFiles?: string[];
+  boxStyle?: BoxStyle;
+  autoEmphasis?: boolean;
+  /** When omitted in rich mode, uses {@link getUI}().theme */
+  theme?: Theme;
+  /** Override box width. When omitted, defaults to min(terminalWidth - 4, 80). */
+  boxWidth?: number;
 }
 
 function isDisplayOpts(opts: LogLike | DisplayOpts): opts is DisplayOpts {
@@ -205,11 +214,12 @@ export function createSilentLog(): LogLike {
 }
 
 /**
- * Print the commit message to stderr. Pass `{ log, isColor, ... }` for boxed rich output
- * when in a TTY, or pass a {@link LogLike} for plain legacy behavior.
+ * Print the commit message to stderr. Pass `{ log, isColor, isTTY: true, style: "rich" }` for a boxed preview;
+ * passing only a {@link LogLike} (no `DisplayOpts`) is treated as **`{ log, isTTY: false }`** — it never promotes to rich output
+ * from stderr alone, so scripted callers stay compact unless they opt into `DisplayOpts`.
  */
 export function displayCommitMessage(message: string, opts: LogLike | DisplayOpts): void {
-  const display: DisplayOpts = isDisplayOpts(opts) ? opts : { log: opts };
+  const display: DisplayOpts = isDisplayOpts(opts) ? opts : { log: opts, isTTY: false };
 
   const log = display.log;
   const { subject, body } = splitCommitMessageForDisplay(message);
@@ -223,20 +233,24 @@ export function displayCommitMessage(message: string, opts: LogLike | DisplayOpt
   });
 
   if (useRich) {
+    const theme = display.theme ?? getUI().theme;
     const tree =
       display.stagedFiles && display.stagedFiles.length > 0
-        ? renderFileTree(display.stagedFiles, 8)
+        ? renderFileTree(display.stagedFiles, 3, { isColor: !!display.isColor })
         : "";
     if (tree) {
       process.stderr.write(tree + "\n");
     }
     const boxed = renderBoxedCommit(subject, body, {
-      width: Math.min(Math.max(tw - 4, 60), 80),
+      width: display.boxWidth ?? Math.min(getTerminalWidth() - 4, 80),
       isColor: !!display.isColor,
+      style: display.boxStyle ?? "gradient",
+      autoEmphasis: display.autoEmphasis ?? true,
+      theme,
     });
     process.stderr.write(boxed + "\n");
     if (display.stats) {
-      process.stderr.write(renderStatsLine(display.stats, !!display.isColor) + "\n");
+      process.stderr.write(renderStatsLine(display.stats, !!display.isColor, theme) + "\n");
     }
     return;
   }

@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createUI, getUI, resetUI } from "../src/ui.js";
 
+const esc = () => String.fromCharCode(27);
+
 describe("ui", () => {
   describe("createUI", () => {
     it("returns a UI instance with color when isTTY and no NO_COLOR", () => {
@@ -177,6 +179,28 @@ describe("ui", () => {
       const instance = createUI({ isTTY: false, noColor: false });
       const result = instance.format.dim("muted");
       expect(result).toBe("muted");
+    });
+  });
+
+  describe("UI.theme", () => {
+    beforeEach(() => {
+      vi.stubEnv("FORCE_COLOR", "1");
+    });
+
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    it("default createUI exposes a theme object with type colors", () => {
+      const inst = createUI({ isTTY: true, noColor: false });
+      expect(inst.theme).toBeDefined();
+      expect(typeof inst.theme.type.feat).toBe("function");
+    });
+
+    it("noColor:true forces mono theme (no chromatic ANSI codes)", () => {
+      const inst = createUI({ isTTY: true, noColor: true });
+      const out = inst.theme.type.feat("x");
+      expect(out).not.toMatch(new RegExp(`${esc()}\\[3[1-6]m`));
     });
   });
 });
