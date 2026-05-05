@@ -6,12 +6,12 @@ import {
   isGitRepo,
   getStagedDiff,
   getStagedFiles,
+  getStagedFileCount,
   hasStagedChanges,
   getUnstagedFiles,
   stageAll,
   gitCommit,
   gitPush,
-  getShortStagedFiles,
   getCommitHash,
   getCurrentBranch,
   getPushStats,
@@ -76,16 +76,14 @@ export async function runCommit(args: ParsedArgs): Promise<void> {
 
   if (all || config.autoStage) {
     stageAll();
-    const { files, total } = getShortStagedFiles();
-    const fileList = total > 3 ? `${files.join(", ")}, +${total - 3} more` : files.join(", ");
+    const total = getStagedFileCount();
     log.step(`staging working tree (${total} file(s))...`);
-    if (fileList) log.dim(`  ${fileList}`);
   }
 
   if (!hasStagedChanges()) {
     const unstaged = getUnstagedFiles();
     if (unstaged.length > 0) {
-      log.error("No staged changes. Use `qc -a` to stage tracked files, or `git add` manually.");
+      log.error("No staged changes. Use `qc -a` to stage all files (modified + untracked), or `git add` manually.");
     } else {
       log.error("No changes to commit.");
     }
@@ -238,11 +236,12 @@ export async function runCommit(args: ParsedArgs): Promise<void> {
   log.step(`[${branch} ${hash}] committed`);
 
   if (push) {
+    // Capture stats BEFORE push — after push, origin is caught up and the range is empty.
+    const pushStats = getPushStats();
     log.step(`pushing to origin/${branch}...`);
     gitPush();
-    const stats = getPushStats();
-    if (stats) {
-      log.success(`pushed ${stats.commits} commit(s) · ${stats.stat}`);
+    if (pushStats) {
+      log.success(`pushed ${pushStats.commits} commit(s) · ${pushStats.stat}`);
     } else {
       log.success("pushed");
     }

@@ -17,6 +17,8 @@ import { ApiClient } from "./api.js";
 import {
   getStagedDiff,
   getStagedFiles,
+  getWorkingTreeDiff,
+  getAllChangedFiles,
   getRecentBranchCommits,
   branchExists,
   createAndCheckoutBranch,
@@ -123,8 +125,21 @@ export async function runBranchGuard(
   }
 
   // action === "branch"
-  const stagedDiff = state.mode === "uncommitted" ? getStagedDiff(args.excludes ?? []) : "";
-  const stagedChanges = state.mode === "uncommitted" ? getStagedFiles() : "";
+  // For branch name generation, gather context from staged changes if any,
+  // otherwise fall back to unstaged working-tree changes (the user clearly
+  // has work-in-progress they want to commit, even if not staged yet).
+  let stagedDiff = "";
+  let stagedChanges = "";
+  if (state.mode === "uncommitted") {
+    stagedDiff = getStagedDiff(args.excludes ?? []);
+    stagedChanges = getStagedFiles();
+    if (!stagedDiff.trim()) {
+      // Nothing staged — use working-tree diff and full file list as fallback
+      // so the AI has context for naming the branch.
+      stagedDiff = getWorkingTreeDiff(args.excludes ?? []);
+      stagedChanges = getAllChangedFiles();
+    }
+  }
   const recentCommits =
     state.mode === "rescue" ? getRecentBranchCommits(state.commitsAhead) : undefined;
 
@@ -272,13 +287,28 @@ async function promptProtectedAction(
 ): Promise<"branch" | "continue" | "abort"> {
   const rl = readline.createInterface({ input: process.stdin, output: process.stderr });
   try {
-    const question =
+    const continueLabel =
       mode === "rescue"
-        ? "Move commits to a new branch? [B/c/a] "
-        : "Create a new branch first? [B/c/a] ";
-    const answer = (await rl.question(question)).trim().toLowerCase();
-    if (answer === "" || answer === "b" || answer === "y") return "branch";
-    if (answer === "c") return "continue";
+        ? "commit on this branch anyway (do not move existing commits)"
+        : "commit on this branch anyway (not recommended)";
+    const branchLabel =
+      mode === "rescue"
+        ? "create a new branch and move your existing commits to it"
+        : "create a new branch first, then commit your staged changes there";
+
+    process.stderr.write(
+      `\nWhat would you like to do?\n` +
+        `  (b)ranch  ${branchLabel}  ← default\n` +
+        `  (c)ommit  ${continueLabel}\n` +
+        `  (a)bort   cancel without committing\n`
+    );
+
+    const answer = (await rl.question("> ")).trim().toLowerCase();
+    if (answer === "" || answer === "b" || answer === "branch" || answer === "y") return "branch";
+    if (answer === "c" || answer === "commit") return "continue";
+    if (answer === "a" || answer === "abort" || answer === "n") return "abort";
+    // Unknown input — treat as abort for safety, with feedback.
+    process.stderr.write(`(unrecognized response "${answer}" — aborting)\n`);
     return "abort";
   } finally {
     rl.close();

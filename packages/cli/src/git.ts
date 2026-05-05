@@ -57,6 +57,41 @@ export function getStagedFiles(): string {
   });
 }
 
+/**
+ * Get the working-tree diff (unstaged changes vs HEAD), respecting excludes.
+ * Used as a fallback for branch name generation when nothing is staged yet.
+ */
+export function getWorkingTreeDiff(excludes: string[] = []): string {
+  const args = ["diff", "HEAD"];
+  if (excludes.length > 0) {
+    args.push("--");
+    args.push(".");
+    for (const pattern of excludes) {
+      args.push(`:(exclude)${pattern}`);
+    }
+  }
+  return execFileSync("git", args, {
+    encoding: "utf-8",
+    maxBuffer: 10 * 1024 * 1024,
+  });
+}
+
+/**
+ * Get all changed files (staged + unstaged + untracked) as a newline-separated list.
+ * Used as a fallback for branch name generation when nothing is staged.
+ */
+export function getAllChangedFiles(): string {
+  const output = execFileSync("git", ["status", "--porcelain"], {
+    encoding: "utf-8",
+  });
+  return output
+    .trim()
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => line.slice(3)) // strip "XY " status prefix
+    .join("\n");
+}
+
 export function hasStagedChanges(): boolean {
   const output = execFileSync("git", ["diff", "--cached", "--name-only"], {
     encoding: "utf-8",
@@ -65,18 +100,21 @@ export function hasStagedChanges(): boolean {
 }
 
 export function getUnstagedFiles(): string[] {
+  // Includes both tracked-but-modified AND untracked files, since `qc -a` (which
+  // calls stageAll → `git add -A`) will stage all of them. The error message
+  // shown when nothing is staged needs to surface this so users know `-a` will
+  // pick them up.
   const output = execFileSync("git", ["status", "--porcelain"], {
     encoding: "utf-8",
   });
-  return output
-    .trim()
-    .split("\n")
-    .filter(Boolean)
-    .filter((line) => !line.startsWith("??")); // exclude untracked
+  return output.trim().split("\n").filter(Boolean);
 }
 
 export function stageAll(): void {
-  execFileSync("git", ["add", "-u"], { stdio: "pipe" });
+  // `-A` stages everything: new files (untracked), modifications, and deletions.
+  // Previously was `-u` which only staged modifications to already-tracked files,
+  // missing untracked files — surprising for users running `qc -a`.
+  execFileSync("git", ["add", "-A"], { stdio: "pipe" });
 }
 
 export function gitCommit(message: string): void {
@@ -84,7 +122,13 @@ export function gitCommit(message: string): void {
   const tmpFile = join(tmpDir, "commit.txt");
   writeFileSync(tmpFile, message, { mode: 0o600 });
   try {
-    execFileSync("git", ["commit", "-F", tmpFile], { stdio: "inherit" });
+    execFileSync("git", ["commit", "-F", tmpFile], { stdio: "pipe" });
+    // Suppress git's own output — the CLI prints its own confirmation line.
+  } catch (err) {
+    // On failure, surface git's stderr so the user can debug.
+    const stderr = (err as { stderr?: Buffer })?.stderr?.toString() ?? "";
+    if (stderr) process.stderr.write(stderr);
+    throw err;
   } finally {
     try {
       unlinkSync(tmpFile);
@@ -96,7 +140,15 @@ export function gitCommit(message: string): void {
 }
 
 export function gitPush(): void {
-  execFileSync("git", ["push"], { stdio: "inherit" });
+  try {
+    execFileSync("git", ["push"], { stdio: "pipe" });
+    // Suppress git's verbose progress/counting output — the CLI prints its own success line.
+  } catch (err) {
+    // On failure, surface git's stderr so the user can debug.
+    const stderr = (err as { stderr?: Buffer })?.stderr?.toString() ?? "";
+    if (stderr) process.stderr.write(stderr);
+    throw err;
+  }
 }
 
 export function getBranchCommits(base = "main"): string[] {
@@ -382,7 +434,13 @@ export function getHeadSha(): string {
 /** Push current branch to origin and set upstream. */
 export function gitPushSetUpstream(branch: string): void {
   validateRef(branch, "branch");
-  execFileSync("git", ["push", "-u", "origin", branch], { stdio: "inherit" });
+  try {
+    execFileSync("git", ["push", "-u", "origin", branch], { stdio: "pipe" });
+  } catch (err) {
+    const stderr = (err as { stderr?: Buffer })?.stderr?.toString() ?? "";
+    if (stderr) process.stderr.write(stderr);
+    throw err;
+  }
 }
 
 /** Delete a local branch by name (`git branch -D`). */

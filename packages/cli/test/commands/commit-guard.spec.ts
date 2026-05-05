@@ -35,15 +35,15 @@ vi.mock("../../src/git.js", () => ({
   isGitRepo: () => true,
   getStagedDiff: () => "diff --git a/x b/x\n+x",
   getStagedFiles: () => "x\n",
+  getStagedFileCount: () => 1,
   hasStagedChanges: vi.fn().mockReturnValue(false),
   getUnstagedFiles: () => [],
   stageAll: vi.fn(),
   gitCommit: vi.fn(),
   gitPush: vi.fn(),
-  getShortStagedFiles: () => ({ files: [], total: 0 }),
   getCommitHash: () => "abc1234",
   getCurrentBranch: () => "main",
-  getPushStats: () => null,
+  getPushStats: vi.fn().mockReturnValue({ commits: 1, stat: "1 file changed, 1 insertion(+)" }),
   getRecentBranchCommits: () => [],
   branchExists: vi.fn().mockReturnValue(false),
   createAndCheckoutBranch: vi.fn(),
@@ -69,7 +69,8 @@ vi.mock("../../src/ui.js", () => ({
 }));
 
 vi.mock("../../src/smart-diff.js", () => ({
-  preprocessDiff: (d: string) => ({ processedDiff: d, summarized: [], tokensSaved: 0 }),
+  preprocessDiff: (d: string) => ({ processedDiff: d, summarized: [], aggressivelySummarized: [], tokensSaved: 0 }),
+  preprocessDiffWithSizeBudget: (d: string) => ({ processedDiff: d, summarized: [], aggressivelySummarized: [], tokensSaved: 0 }),
 }));
 
 vi.mock("../../src/commit-helpers.js", () => ({
@@ -169,5 +170,39 @@ describe("runCommit rescue mode guard (via runBranchGuard)", () => {
 
     // gitCommit was not invoked (no staged changes)
     expect(gitMod.gitCommit).not.toHaveBeenCalled();
+  });
+});
+
+describe("runCommit push stats ordering", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // Default: guard passes, staged changes exist
+    (branchGuardMod.runBranchGuard as ReturnType<typeof vi.fn>).mockResolvedValue({
+      action: "continue",
+    });
+    (gitMod.hasStagedChanges as unknown as ReturnType<typeof vi.fn>).mockReturnValue(true);
+  });
+
+  it("calls getPushStats before gitPush so stats reflect commits about to be pushed", async () => {
+    const callOrder: string[] = [];
+
+    (gitMod.getPushStats as unknown as ReturnType<typeof vi.fn>).mockImplementation(() => {
+      callOrder.push("getPushStats");
+      return { commits: 1, stat: "1 file changed" };
+    });
+
+    (gitMod.gitPush as unknown as ReturnType<typeof vi.fn>).mockImplementation(() => {
+      callOrder.push("gitPush");
+    });
+
+    (gitMod.gitCommit as unknown as ReturnType<typeof vi.fn>).mockImplementation(() => {});
+
+    await runCommit({ ...baseArgs, push: true });
+
+    // getPushStats MUST appear before gitPush in the call sequence
+    const statsIdx = callOrder.indexOf("getPushStats");
+    const pushIdx = callOrder.indexOf("gitPush");
+    expect(statsIdx).toBeGreaterThanOrEqual(0);
+    expect(pushIdx).toBeGreaterThan(statsIdx);
   });
 });

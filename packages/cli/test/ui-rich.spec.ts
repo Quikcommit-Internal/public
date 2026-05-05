@@ -1,10 +1,12 @@
 import { describe, it, expect } from "vitest";
+import pc from "picocolors";
 import {
   renderFileTree,
   renderBoxedCommit,
   renderStatsLine,
   splitCommitForBox,
   shouldUseRichOutput,
+  stripAnsi,
 } from "../src/ui-rich.js";
 
 describe("renderFileTree", () => {
@@ -111,6 +113,66 @@ describe("renderBoxedCommit", () => {
     const out = renderBoxedCommit("feat(x): test", "", { width: 30, isColor: false });
     expect(out).not.toContain("╭");
     expect(out).toContain("feat(x): test");
+  });
+
+  it("all inner lines have the same visible length as the top border", () => {
+    const width = 80;
+    const out = renderBoxedCommit(
+      "feat(auth): add oauth login flow with provider support",
+      "- Update config schema\n- Add redirect handler\n- Write integration tests",
+      { width, isColor: false }
+    );
+    const boxLines = out.split("\n");
+    const topLine = boxLines[0] ?? "";
+    const topLen = stripAnsi(topLine).length;
+
+    for (const line of boxLines) {
+      const visLen = stripAnsi(line).length;
+      expect(visLen).toBe(topLen);
+    }
+  });
+
+  it("all inner lines have the same visible length as top border when isColor=true", () => {
+    const width = 80;
+    const out = renderBoxedCommit(
+      "feat(auth): add oauth login",
+      "- First bullet point",
+      { width, isColor: true }
+    );
+    const boxLines = out.split("\n");
+    const topLen = stripAnsi(boxLines[0] ?? "").length;
+
+    for (const line of boxLines) {
+      expect(stripAnsi(line).length).toBe(topLen);
+    }
+  });
+});
+
+describe("stripAnsi", () => {
+  it("strips bold escape sequences from picocolors output", () => {
+    const colored = pc.bold("hello");
+    const stripped = stripAnsi(colored);
+    expect(stripped).toBe("hello");
+    expect(stripped.length).toBe(5);
+  });
+
+  it("strips cyan color from picocolors output", () => {
+    const colored = pc.cyan("feat");
+    const stripped = stripAnsi(colored);
+    expect(stripped).toBe("feat");
+    expect(stripped.length).toBe(4);
+  });
+
+  it("strips combined bold+cyan as produced in commit box header", () => {
+    const colored = pc.bold(pc.cyan("feat")) + "(" + pc.bold(pc.yellow("auth")) + "): subject";
+    const stripped = stripAnsi(colored);
+    expect(stripped).toBe("feat(auth): subject");
+    // "feat(auth): subject" has 19 visible characters
+    expect(stripped.length).toBe(19);
+  });
+
+  it("leaves plain strings unchanged", () => {
+    expect(stripAnsi("no colors here")).toBe("no colors here");
   });
 });
 

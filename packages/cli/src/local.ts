@@ -21,6 +21,8 @@ import {
   createBranch,
   createAndCheckoutBranch,
   gitPushSetUpstream,
+  getPushStats,
+  getCurrentBranch,
 } from "./git.js";
 import { detectWorkspace, autoDetectScope } from "./monorepo.js";
 import { detectCommitlintRules } from "./commitlint.js";
@@ -459,8 +461,19 @@ export async function runLocalCommit(args: LocalCommitOptions): Promise<void> {
   }
 
   gitCommit(message);
+  const branch = getCurrentBranch();
+  log.step(`[${branch} committed]`);
+
   if (args.push) {
+    // Capture stats BEFORE push — after push, origin is caught up and the range is empty.
+    const pushStats = getPushStats();
+    log.step(`pushing to origin/${branch}...`);
     gitPush();
+    if (pushStats) {
+      log.success(`pushed ${pushStats.commits} commit(s) · ${pushStats.stat}`);
+    } else {
+      log.success("pushed");
+    }
   }
 }
 

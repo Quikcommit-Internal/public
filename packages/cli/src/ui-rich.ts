@@ -64,8 +64,9 @@ function wrapLine(text: string, width: number): string[] {
   return result;
 }
 
-function stripAnsi(s: string): string {
+export function stripAnsi(s: string): string {
   // Strip ANSI SGR sequences for visible-length padding in boxes.
+  // Covers picocolors output: bold (\x1b[1m/\x1b[22m), colors (\x1b[3Xm/\x1b[3Xm), resets (\x1b[39m).
   // eslint-disable-next-line no-control-regex -- intentional ESC (U+001B) prefix in CSI pattern
   return s.replace(/\x1b\[[0-9;]*m/g, "");
 }
@@ -84,7 +85,12 @@ export function renderBoxedCommit(header: string, body: string, opts: BoxOpts): 
     return lines.join("\n");
   }
 
-  const innerWidth = opts.width - 8;
+  // Layout math:
+  //   top border = "  ╭" + "─".repeat(opts.width - 2) + "╮"  → visible length = opts.width + 2
+  //   inner line = "  │  " + content + padding + "  │"
+  //                = 2 + 1 + 2 + innerWidth + 2 + 1 = innerWidth + 8
+  // For alignment: innerWidth + 8 = opts.width + 2  → innerWidth = opts.width - 6
+  const innerWidth = opts.width - 6;
   const horiz = opts.width - 2;
   const top =
     "  " +
@@ -112,7 +118,7 @@ export function renderBoxedCommit(header: string, body: string, opts: BoxOpts): 
   const lines: string[] = [];
   const headerParts = wrapLine(firstLineStyled, innerWidth);
   for (let i = 0; i < headerParts.length; i++) {
-    const indent = i === 0 ? "" : "    ";
+    const indent = i === 0 ? "" : "  ";
     lines.push(boxedLine(indent + (headerParts[i] ?? ""), innerWidth, opts.isColor));
   }
 
