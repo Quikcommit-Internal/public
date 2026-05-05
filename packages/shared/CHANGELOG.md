@@ -1,5 +1,11 @@
 # @quikcommit/shared
 
+## 7.0.0
+
+### Major Changes
+
+- [#45](https://github.com/Quikcommit-Internal/quikcommit/pull/45) [`50bcfdf`](https://github.com/Quikcommit-Internal/quikcommit/commit/50bcfdf7c42a0989312bf94063eaa256141be58a) Thanks [@foundquik](https://github.com/foundquik)! - Many, many things
+
 ## 6.0.0
 
 ### Major Changes
