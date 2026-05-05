@@ -1,5 +1,11 @@
 # @quikcommit/cli
 
+## 10.0.0
+
+### Major Changes
+
+- [`16d7ed6`](https://github.com/Quikcommit-Internal/quikcommit/commit/16d7ed6d07c7f771f2fe4200c1a6a5883b725f59) - Added colors?
+
 ## 9.0.0
 
 ### Major Changes
