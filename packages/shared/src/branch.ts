@@ -68,12 +68,40 @@ export function slugifyFilename(path: string): string {
  * with no AI inference. Used as a fallback when both SaaS and local providers are
  * unavailable. Shared across CLI and AI worker.
  */
+const NON_CODE_PATTERNS = [
+  /^docs?\//i,
+  /^\.env/,
+  /\.md$/i,
+  /^readme/i,
+  /^changelog/i,
+  /^license/i,
+  /\.lock$/,
+  /\.ya?ml$/,
+  /\.json$/,
+  /\.toml$/,
+  /\/\.?config\b/i,
+  /^\.github\//,
+  /^\.vscode\//,
+];
+
+function pickBestFile(files: string[]): string {
+  // Prefer code files (src/, lib/, app/, packages/) over docs/config
+  const codeFiles = files.filter(
+    (f) => !NON_CODE_PATTERNS.some((rx) => rx.test(f))
+  );
+  return codeFiles[0] ?? files[0] ?? "";
+}
+
 export function deterministicBranchName(opts: {
   files?: string[];
   description?: string;
 }): { name: string; type: string; slug: string } {
   const files = opts.files ?? [];
-  const haystack = `${opts.description ?? ""} ${files.join(" ")}`;
+  // For type detection, prioritize code files over docs/config
+  const codeFiles = files.filter(
+    (f) => !NON_CODE_PATTERNS.some((rx) => rx.test(f))
+  );
+  const haystack = `${opts.description ?? ""} ${(codeFiles.length > 0 ? codeFiles : files).join(" ")}`;
 
   let type = "chore";
   for (const [rx, t] of TYPE_HINTS) {
@@ -94,7 +122,7 @@ export function deterministicBranchName(opts: {
       .join("-")
       .slice(0, 40);
   } else if (files.length > 0) {
-    slug = slugifyFilename(files[0] ?? "");
+    slug = slugifyFilename(pickBestFile(files));
   } else {
     slug = "changes";
   }

@@ -140,11 +140,24 @@ export function gitCommit(message: string): void {
 }
 
 export function gitPush(): void {
+  // Auto-detect if the current branch has an upstream. If not, set it with --set-upstream.
+  // This handles freshly created branches (e.g., from `qc branch` or the protected-branch guard).
+  const branch = execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], {
+    encoding: "utf-8",
+  }).trim();
+
+  let hasUpstream = false;
   try {
-    execFileSync("git", ["push"], { stdio: "pipe" });
-    // Suppress git's verbose progress/counting output — the CLI prints its own success line.
+    execFileSync("git", ["rev-parse", "--abbrev-ref", `${branch}@{upstream}`], { stdio: "pipe" });
+    hasUpstream = true;
+  } catch {
+    // No upstream configured
+  }
+
+  const args = hasUpstream ? ["push"] : ["push", "--set-upstream", "origin", branch];
+  try {
+    execFileSync("git", args, { stdio: "pipe" });
   } catch (err) {
-    // On failure, surface git's stderr so the user can debug.
     const stderr = (err as { stderr?: Buffer })?.stderr?.toString() ?? "";
     if (stderr) process.stderr.write(stderr);
     throw err;
@@ -279,19 +292,40 @@ export function getPushStats(): { commits: number; stat: string } | null {
     const branch = execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], {
       encoding: "utf-8",
     }).trim();
-    const countOutput = execFileSync(
-      "git",
-      ["rev-list", "--count", `origin/${branch}..HEAD`],
-      { encoding: "utf-8" }
-    ).trim();
-    const parsedCount = parseInt(countOutput, 10);
-    const commits = Number.isFinite(parsedCount) ? parsedCount : 0;
+
+    // Check if there's an upstream to compare against
+    let upstream: string | null = null;
+    try {
+      upstream = execFileSync(
+        "git", ["rev-parse", "--abbrev-ref", `${branch}@{upstream}`],
+        { encoding: "utf-8", stdio: "pipe" }
+      ).trim();
+    } catch {
+      // No upstream — fresh branch, never pushed
+    }
+
+    if (upstream) {
+      const countOutput = execFileSync(
+        "git",
+        ["rev-list", "--count", `${upstream}..HEAD`],
+        { encoding: "utf-8" }
+      ).trim();
+      const parsedCount = parseInt(countOutput, 10);
+      const commits = Number.isFinite(parsedCount) ? parsedCount : 0;
+      const stat = execFileSync(
+        "git",
+        ["diff", "--shortstat", `${upstream}..HEAD`],
+        { encoding: "utf-8" }
+      ).trim();
+      return { commits, stat };
+    }
+
+    // No upstream: fresh branch. Get stat for the most recent commit.
     const stat = execFileSync(
-      "git",
-      ["diff", "--shortstat", `origin/${branch}..HEAD`],
+      "git", ["diff", "--shortstat", "HEAD~1..HEAD"],
       { encoding: "utf-8" }
     ).trim();
-    return { commits, stat };
+    return { commits: 1, stat };
   } catch {
     return null;
   }

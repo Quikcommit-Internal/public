@@ -83,23 +83,41 @@ describe("gitPush", () => {
     vi.clearAllMocks();
   });
 
-  it("uses stdio:pipe so git's verbose output is suppressed", () => {
-    (execFileSync as unknown as ReturnType<typeof vi.fn>).mockReturnValue(Buffer.from(""));
+  it("uses --set-upstream when branch has no upstream", () => {
+    const mock = execFileSync as unknown as ReturnType<typeof vi.fn>;
+    mock
+      .mockReturnValueOnce("feat/my-branch\n") // rev-parse --abbrev-ref HEAD
+      .mockImplementationOnce(() => { throw new Error("no upstream"); }) // rev-parse upstream check
+      .mockReturnValueOnce(Buffer.from("")); // git push --set-upstream
     gitPush();
-    const call = (execFileSync as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
-    expect(call[0]).toBe("git");
-    expect(call[1]).toEqual(["push"]);
-    expect(call[2]).toMatchObject({ stdio: "pipe" });
+    const pushCall = mock.mock.calls[2];
+    expect(pushCall[0]).toBe("git");
+    expect(pushCall[1]).toEqual(["push", "--set-upstream", "origin", "feat/my-branch"]);
+    expect(pushCall[2]).toMatchObject({ stdio: "pipe" });
   });
 
-  it("writes stderr to process.stderr and re-throws on failure", () => {
+  it("uses plain push when branch has an upstream", () => {
+    const mock = execFileSync as unknown as ReturnType<typeof vi.fn>;
+    mock
+      .mockReturnValueOnce("feat/my-branch\n") // rev-parse --abbrev-ref HEAD
+      .mockReturnValueOnce("origin/feat/my-branch\n") // rev-parse upstream (exists)
+      .mockReturnValueOnce(Buffer.from("")); // git push
+    gitPush();
+    const pushCall = mock.mock.calls[2];
+    expect(pushCall[1]).toEqual(["push"]);
+  });
+
+  it("surfaces stderr and re-throws on push failure", () => {
+    const mock = execFileSync as unknown as ReturnType<typeof vi.fn>;
     const stderrWrite = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
-    const err = Object.assign(new Error("push failed"), {
-      stderr: Buffer.from("fatal: could not read Username"),
-    });
-    (execFileSync as unknown as ReturnType<typeof vi.fn>).mockImplementation(() => {
-      throw err;
-    });
+    mock
+      .mockReturnValueOnce("main\n") // branch name
+      .mockReturnValueOnce("origin/main\n") // upstream exists
+      .mockImplementationOnce(() => {
+        throw Object.assign(new Error("push failed"), {
+          stderr: Buffer.from("fatal: could not read Username"),
+        });
+      });
 
     expect(() => gitPush()).toThrow("push failed");
     expect(stderrWrite).toHaveBeenCalledWith("fatal: could not read Username");
