@@ -1,5 +1,11 @@
 # @quikcommit/shared
 
+## 8.0.0
+
+### Major Changes
+
+- [#48](https://github.com/Quikcommit-Internal/quikcommit/pull/48) [`a2acdff`](https://github.com/Quikcommit-Internal/quikcommit/commit/a2acdffa1276288283ad1fe0540e47192ab2a652) Thanks [@foundquik](https://github.com/foundquik)! - Big tings eh
+
 ## 7.0.0
 
 ### Major Changes
