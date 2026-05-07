@@ -47,7 +47,7 @@ export function getStagedDiff(excludes: string[] = []): string {
   }
   return execFileSync("git", args, {
     encoding: "utf-8",
-    maxBuffer: 10 * 1024 * 1024,
+    maxBuffer: 50 * 1024 * 1024,
   });
 }
 

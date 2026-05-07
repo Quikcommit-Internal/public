@@ -1,6 +1,6 @@
 {
   "name": "@quikcommit/cli",
-  "version": "11.1.0",
+  "version": "12.0.0",
   "description": "AI-powered conventional commit messages",
   "bin": {
     "qc": "./dist/index.js"
