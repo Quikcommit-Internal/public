@@ -20,7 +20,7 @@ import {
 } from "../git.js";
 import { detectWorkspace, autoDetectScope } from "../monorepo.js";
 import { getUI } from "../ui.js";
-import { preprocessDiffWithSizeBudget } from "../smart-diff.js";
+import { preprocessDiffWithSizeBudget, splitDiffIntoChunks } from "../smart-diff.js";
 import {
   applyCliTypeScopeToRules,
   generationHintsFromArgs,
@@ -105,19 +105,14 @@ export async function runCommit(args: ParsedArgs): Promise<void> {
   const changes = getStagedFiles();
 
   let processedDiff = diff;
+  let needsChunking = false;
   if (!args.noSmartDiff) {
-    // Budget the post-smart-diff payload at 5MB — well under the gateway's 8MB
-    // diff cap, leaving headroom for changes/rules/recent_commits fields.
-    const smartResult = preprocessDiffWithSizeBudget(diff, 5 * 1024 * 1024);
+    const smartResult = preprocessDiffWithSizeBudget(diff);
     processedDiff = smartResult.processedDiff;
+    needsChunking = smartResult.needsChunking;
     if (smartResult.summarized.length > 0) {
       log.step(
         `smart-diff: ${smartResult.summarized.length} file(s) summarized (saved ~${Math.round(smartResult.tokensSaved / 1000)}K tokens)`
-      );
-    }
-    if (smartResult.aggressivelySummarized.length > 0) {
-      log.step(
-        `large-diff: ${smartResult.aggressivelySummarized.length} additional file(s) summarized to fit (commit message may be less specific — consider committing fewer files at a time)`
       );
     }
   }
@@ -166,7 +161,9 @@ export async function runCommit(args: ParsedArgs): Promise<void> {
   const boxStyle = args.boxStyleOverride ?? config.ui?.box?.style ?? "gradient";
   const spinner = createStageSpinner({
     stage: "aiGenerate",
-    message: `generating commit (${modelDisplay})...`,
+    message: needsChunking
+      ? `analyzing ${changes.trim().split("\n").length} files in chunks (${modelDisplay})...`
+      : `generating commit (${modelDisplay})...`,
     ...uiCtx,
   });
   if (!silent) spinner.start();
@@ -175,14 +172,66 @@ export async function runCommit(args: ParsedArgs): Promise<void> {
   let generatedMessage: string;
   let diagnostics: unknown;
   try {
-    ({ message: generatedMessage, diagnostics } = await client.generateCommit(
-      processedDiff,
-      changes,
-      rules,
-      model,
-      recentCommits,
-      generationHints
-    ));
+    if (needsChunking) {
+      const chunks = splitDiffIntoChunks(processedDiff);
+      if (chunks.length === 0) {
+        spinner.stop();
+        log.error("No parseable diff content to analyze.");
+        process.exit(1);
+      }
+      spinner.stop();
+      if (!silent) log.step(`large diff — analyzing ${chunks.length} chunk(s) in parallel...`);
+
+      // Fix #5: Use allSettled so a single chunk failure doesn't abort everything
+      const results = await Promise.allSettled(
+        chunks.map((chunk) =>
+          client.summarizeChunk(chunk.diff, chunk.files.filter(Boolean).join("\n") || "unknown", model)
+        )
+      );
+      const summaries: string[] = [];
+      for (const r of results) {
+        if (r.status === "fulfilled" && r.value) {
+          summaries.push(r.value);
+        }
+      }
+      if (summaries.length === 0) {
+        log.error("All chunk summaries failed. Check your connection and try again.");
+        process.exit(1);
+      }
+      if (results.some((r) => r.status === "rejected") && !silent) {
+        const failed = results.filter((r) => r.status === "rejected").length;
+        log.step(`${failed}/${results.length} chunk(s) failed — continuing with partial summaries`);
+      }
+      const combinedSummary = summaries.join("\n\n");
+
+      const finalSpinner = createStageSpinner({
+        stage: "aiGenerate",
+        message: `generating commit from ${chunks.length} summaries (${modelDisplay})...`,
+        ...uiCtx,
+      });
+      if (!silent) finalSpinner.start();
+      try {
+        ({ message: generatedMessage, diagnostics } = await client.generateCommit(
+          combinedSummary,
+          changes,
+          rules,
+          model,
+          recentCommits,
+          generationHints
+        ));
+      } finally {
+        finalSpinner.stop();
+      }
+    } else {
+      ({ message: generatedMessage, diagnostics } = await client.generateCommit(
+        processedDiff,
+        changes,
+        rules,
+        model,
+        recentCommits,
+        generationHints
+      ));
+    }
   } finally {
     spinner.stop();
   }

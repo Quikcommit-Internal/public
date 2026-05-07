@@ -190,6 +190,18 @@ export interface BranchWorkerResponse {
   };
 }
 
+/** API request: summarize a diff chunk for multi-chunk commit flows */
+export interface SummarizeRequest {
+  diff: string;
+  changes: string;
+  model?: string;
+}
+
+/** API response: diff chunk summary */
+export interface SummarizeResponse {
+  summary: string;
+}
+
 /** UI / visual polish config. Used in .quikcommit.yml and ~/.config/qc/config.json. */
 export interface UIConfig {
   readonly theme?: "vibrant" | "muted" | "mono";

@@ -313,17 +313,15 @@ export async function runLocalCommit(args: LocalCommitOptions): Promise<void> {
   const changes = getStagedFiles();
 
   if (!args.noSmartDiff) {
-    const smartResult = preprocessDiffWithSizeBudget(diff, 5 * 1024 * 1024);
+    const smartResult = preprocessDiffWithSizeBudget(diff);
     diff = smartResult.processedDiff;
     if (smartResult.summarized.length > 0 && !silent) {
       log.step(
         `smart-diff: ${smartResult.summarized.length} file(s) summarized (saved ~${Math.round(smartResult.tokensSaved / 1000)}K tokens)`
       );
     }
-    if (smartResult.aggressivelySummarized.length > 0 && !silent) {
-      log.step(
-        `large-diff: ${smartResult.aggressivelySummarized.length} additional file(s) summarized to fit (commit message may be less specific)`
-      );
+    if (smartResult.needsChunking && !silent) {
+      log.step("large diff detected — local providers receive context-stripped diff");
     }
   }
 

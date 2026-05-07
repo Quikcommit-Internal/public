@@ -127,6 +127,14 @@ export class ApiClient {
     return this.request<BranchResponse>("/v1/branch", req);
   }
 
+  async summarizeChunk(diff: string, changes: string, model?: string): Promise<string> {
+    const data = await this.request<{ summary?: string }>(
+      "/v1/summarize",
+      { diff, changes, ...(model ? { model } : {}) }
+    );
+    return data.summary ?? "";
+  }
+
   private async fetchJson<T>(
     endpoint: string,
     options?: { method?: string; body?: string }

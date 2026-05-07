@@ -74,8 +74,9 @@ vi.mock("../../src/ui.js", async () => {
 });
 
 vi.mock("../../src/smart-diff.js", () => ({
-  preprocessDiff: (d: string) => ({ processedDiff: d, summarized: [], aggressivelySummarized: [], tokensSaved: 0 }),
-  preprocessDiffWithSizeBudget: (d: string) => ({ processedDiff: d, summarized: [], aggressivelySummarized: [], tokensSaved: 0 }),
+  preprocessDiff: (d: string) => ({ processedDiff: d, summarized: [], tokensSaved: 0, needsChunking: false }),
+  preprocessDiffWithSizeBudget: (d: string) => ({ processedDiff: d, summarized: [], tokensSaved: 0, needsChunking: false }),
+  splitDiffIntoChunks: () => [],
 }));
 
 vi.mock("../../src/commit-helpers.js", () => ({

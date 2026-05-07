@@ -172,8 +172,7 @@ diff --git a/src/index.ts b/src/index.ts
     expect(result.processedDiff).not.toContain("x".repeat(600));
   });
 
-  // Verify aggressivelySummarized is always present as an empty array in preprocessDiff
-  it("preprocessDiff always includes aggressivelySummarized: []", () => {
+  it("preprocessDiff includes needsChunking: false", () => {
     const diff = `diff --git a/src/index.ts b/src/index.ts
 --- a/src/index.ts
 +++ b/src/index.ts
@@ -182,7 +181,7 @@ diff --git a/src/index.ts b/src/index.ts
  const a = 1;
 `;
     const result = preprocessDiff(diff);
-    expect(result.aggressivelySummarized).toEqual([]);
+    expect(result.needsChunking).toBe(false);
   });
 });
 
@@ -209,56 +208,45 @@ describe("preprocessDiffWithSizeBudget", () => {
 `;
     // Use a budget of 1 MB — far more than this tiny diff
     const result = preprocessDiffWithSizeBudget(diff, 1024 * 1024);
-    expect(result.aggressivelySummarized).toEqual([]);
+
     expect(result.processedDiff).toContain("src/index.ts");
     expect(result.processedDiff).toContain("+import");
   });
 
-  it("tier 1: summarizes files > 5KB when diff exceeds budget", () => {
-    // One large file (10 KB) + one tiny file; budget is 1 byte to force triggering
+  it("strips context when diff exceeds budget", () => {
     const largeDiff = makeCodeFileDiff("src/large.ts", 10 * 1024);
     const smallDiff = `diff --git a/src/small.ts b/src/small.ts\n--- a/src/small.ts\n+++ b/src/small.ts\n@@ -1 +1 @@\n+const x = 1;\n`;
     const combined = largeDiff + smallDiff;
 
-    // Budget of 1 byte forces tier 1 to fire (large.ts > 5 KB gets summarized)
-    const result = preprocessDiffWithSizeBudget(combined, 1);
-    expect(result.aggressivelySummarized).toContain("src/large.ts");
-    // The large file should be replaced with a summary line
-    expect(result.processedDiff).toContain("[modified: src/large.ts");
-    expect(result.processedDiff).not.toContain("a".repeat(79));
+    // Budget smaller than full diff but larger than zero-context — triggers context stripping
+    const result = preprocessDiffWithSizeBudget(combined, largeDiff.length - 100);
+    // All change lines should still be present (context stripped, not changes)
+    expect(result.processedDiff).toContain("+const x = 1;");
+    // No files should be summarized away
+
   });
 
-  it("tier 2: summarizes files > 2KB when tier 1 is not enough", () => {
-    // Three files: one 10 KB, one 3 KB, one tiny; budget so tight that even
-    // after tier 1 we still exceed it.
-    const file10k = makeCodeFileDiff("src/ten.ts", 10 * 1024);
-    const file3k  = makeCodeFileDiff("src/three.ts", 3 * 1024);
-    const fileTiny = `diff --git a/src/tiny.ts b/src/tiny.ts\n--- a/src/tiny.ts\n+++ b/src/tiny.ts\n@@ -1 +1 @@\n+x\n`;
-    const combined = file10k + file3k + fileTiny;
-
-    // Budget of 1 byte forces tier 2 as well
-    const result = preprocessDiffWithSizeBudget(combined, 1);
-    expect(result.aggressivelySummarized).toContain("src/ten.ts");
-    expect(result.aggressivelySummarized).toContain("src/three.ts");
-    expect(result.processedDiff).toContain("[modified: src/ten.ts");
-    expect(result.processedDiff).toContain("[modified: src/three.ts");
-  });
-
-  it("final fallback: all code files summarized when tiers 1+2 are not enough", () => {
-    // Two tiny files (< 2 KB each) but budget is 1 byte so final fallback fires
+  it("sets needsChunking when diff exceeds budget even after zero-context stripping", () => {
+    // Two files, budget of 1 byte — even zero-context can't fit
     const file1 = `diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1 @@\n+const a = 1;\n`;
     const file2 = `diff --git a/src/b.ts b/src/b.ts\n--- a/src/b.ts\n+++ b/src/b.ts\n@@ -1 +1 @@\n+const b = 2;\n`;
     const combined = file1 + file2;
 
-    // Budget of 1 byte forces final fallback
     const result = preprocessDiffWithSizeBudget(combined, 1);
-    expect(result.aggressivelySummarized).toContain("src/a.ts");
-    expect(result.aggressivelySummarized).toContain("src/b.ts");
-    expect(result.processedDiff).toContain("[modified: src/a.ts");
-    expect(result.processedDiff).toContain("[modified: src/b.ts");
-    // Raw content should not appear
-    expect(result.processedDiff).not.toContain("+const a = 1;");
-    expect(result.processedDiff).not.toContain("+const b = 2;");
+    expect(result.needsChunking).toBe(true);
+    // All change lines should STILL be present — never dropped
+    expect(result.processedDiff).toContain("+const a = 1;");
+    expect(result.processedDiff).toContain("+const b = 2;");
+    // No files should be summarized
+
+  });
+
+  it("preserves all changes even when needsChunking is true", () => {
+    const largeDiff = makeCodeFileDiff("src/big.ts", 10 * 1024);
+    const result = preprocessDiffWithSizeBudget(largeDiff, 1);
+    expect(result.needsChunking).toBe(true);
+    // The actual code changes must still be present
+    expect(result.processedDiff).toContain("a".repeat(79));
   });
 
   it("noise files (lock/generated) are always summarized regardless of budget", () => {
@@ -269,7 +257,7 @@ describe("preprocessDiffWithSizeBudget", () => {
     // Large budget — no aggressive summarization needed
     const result = preprocessDiffWithSizeBudget(combined, 100 * 1024 * 1024);
     expect(result.summarized).toContain("pnpm-lock.yaml");
-    expect(result.aggressivelySummarized).not.toContain("pnpm-lock.yaml");
+
     expect(result.processedDiff).toContain("[lock file updated: pnpm-lock.yaml");
   });
 
@@ -284,7 +272,7 @@ describe("preprocessDiffWithSizeBudget", () => {
     const result = preprocessDiffWithSizeBudget("", 1024);
     expect(result.processedDiff).toBe("");
     expect(result.summarized).toEqual([]);
-    expect(result.aggressivelySummarized).toEqual([]);
+
     expect(result.tokensSaved).toBe(0);
   });
 });
