@@ -1,5 +1,11 @@
 # @quikcommit/shared
 
+## 9.0.0
+
+### Major Changes
+
+- [`f2409f4`](https://github.com/Quikcommit-Internal/quikcommit/commit/f2409f444c50d37f6ccfdc2f9188486e33baa878) - Fixed too large issues
+
 ## 8.1.0
 
 ### Minor Changes
