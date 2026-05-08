@@ -1,5 +1,11 @@
 # @quikcommit/cli
 
+## 12.1.0
+
+### Minor Changes
+
+- [`9cbceab`](https://github.com/Quikcommit-Internal/quikcommit/commit/9cbceabac7d38e2ea8d0bd7ad0f85441594178e6) - Fix branch gen issues.
+
 ## 12.0.0
 
 ### Major Changes
