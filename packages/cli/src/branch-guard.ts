@@ -23,6 +23,7 @@ import {
   branchExists,
   createAndCheckoutBranch,
 } from "./git.js";
+import { preprocessDiff } from "./smart-diff.js";
 import {
   detectProtectedBranchState,
   shouldRunGuard,
@@ -133,14 +134,13 @@ export async function runBranchGuard(
   let stagedDiff = "";
   let stagedChanges = "";
   if (state.mode === "uncommitted") {
-    stagedDiff = getStagedDiff(args.excludes ?? []);
+    let rawDiff = getStagedDiff(args.excludes ?? []);
     stagedChanges = getStagedFiles();
-    if (!stagedDiff.trim()) {
-      // Nothing staged — use working-tree diff and full file list as fallback
-      // so the AI has context for naming the branch.
-      stagedDiff = getWorkingTreeDiff(args.excludes ?? []);
+    if (!rawDiff.trim()) {
+      rawDiff = getWorkingTreeDiff(args.excludes ?? []);
       stagedChanges = getAllChangedFiles();
     }
+    stagedDiff = preprocessDiff(rawDiff).processedDiff;
   }
   const recentCommits =
     state.mode === "rescue" ? getRecentBranchCommits(state.commitsAhead) : undefined;

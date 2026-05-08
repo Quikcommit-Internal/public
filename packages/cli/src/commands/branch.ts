@@ -15,6 +15,7 @@ import {
   createAndCheckoutBranch,
   gitPushSetUpstream,
 } from "../git.js";
+import { preprocessDiff } from "../smart-diff.js";
 import { finalizeBranchName, sanitizeBranchName, deterministicBranchName } from "../branch-name.js";
 import { promptYesNo } from "../commit-helpers.js";
 import { getUI } from "../ui.js";
@@ -237,7 +238,8 @@ export async function runBranch(opts: BranchOptions): Promise<void> {
         "No staged changes detected. Stage with `git add`, or provide -m '<description>'."
       );
     }
-    payload.diff = getStagedDiff(config.excludes ?? []);
+    const rawDiff = getStagedDiff(config.excludes ?? []);
+    payload.diff = preprocessDiff(rawDiff).processedDiff;
     payload.changes = getStagedFiles();
   }
 
