@@ -14,6 +14,7 @@ import {
   createBranch,
   createAndCheckoutBranch,
   gitPushSetUpstream,
+  getWorkingDiffStat,
 } from "../git.js";
 import { preprocessDiff } from "../smart-diff.js";
 import { finalizeBranchName, sanitizeBranchName, deterministicBranchName } from "../branch-name.js";
@@ -239,8 +240,11 @@ export async function runBranch(opts: BranchOptions): Promise<void> {
       );
     }
     const rawDiff = getStagedDiff(config.excludes ?? []);
-    payload.diff = preprocessDiff(rawDiff).processedDiff;
+    const processed = preprocessDiff(rawDiff).processedDiff;
+    // Cap diff for branch naming — file list + stat carry more value than raw diff
+    payload.diff = processed.slice(0, 60_000) || undefined;
     payload.changes = getStagedFiles();
+    payload.diff_stat = getWorkingDiffStat(true) || undefined;
   }
 
   const apiKey = opts.apiKey ?? getApiKey();
@@ -251,6 +255,7 @@ export async function runBranch(opts: BranchOptions): Promise<void> {
         description: opts.message,
         diff: opts.message ? undefined : payload.diff,
         changes: opts.message ? undefined : payload.changes,
+        diffStat: opts.message ? undefined : payload.diff_stat,
         recentCommits: payload.recent_commits,
         model: opts.model,
         noSwitch: opts.noSwitch,
@@ -279,6 +284,10 @@ export async function runBranch(opts: BranchOptions): Promise<void> {
   try {
     const client = new ApiClient({ apiKey });
     result = await client.generateBranchName(payload);
+  } catch {
+    const filesArr = payload.changes?.split('\n').filter(Boolean) ?? [];
+    result = deterministicBranchName({ files: filesArr, description: payload.description });
+    log.dim('(used deterministic fallback; API generation failed)');
   } finally {
     spinner.stop();
   }

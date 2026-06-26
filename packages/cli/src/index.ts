@@ -308,6 +308,8 @@ export function parseArgs(args: string[]): ParsedArgs {
       result.messageOnly = true;
     } else if (arg === "--message" && i + 1 < args.length) {
       result.message = args[++i];
+    } else if (arg === "--message") {
+      throw new Error("Flag --message requires a value");
     } else if (arg === "--push") {
       result.push = true;
     } else if (arg === "--rescue") {
@@ -353,33 +355,51 @@ export function parseArgs(args: string[]): ParsedArgs {
       }
     } else if (arg === "--api-key" && i + 1 < args.length) {
       result.apiKey = args[++i];
+    } else if (arg === "--api-key") {
+      throw new Error("Flag --api-key requires a value");
     } else if (arg === "--base" && i + 1 < args.length) {
       result.base = args[++i];
+    } else if (arg === "--base") {
+      throw new Error("Flag --base requires a value");
     } else if (arg === "--create") {
       result.create = true;
     } else if (arg === "--from" && i + 1 < args.length) {
       result.from = args[++i];
+    } else if (arg === "--from") {
+      throw new Error("Flag --from requires a value");
     } else if (arg === "--from-commits") {
       result.fromCommits = true;
     } else if (arg === "--to" && i + 1 < args.length) {
       result.to = args[++i];
+    } else if (arg === "--to") {
+      throw new Error("Flag --to requires a value");
     } else if (arg === "--write") {
       result.write = true;
     } else if (arg === "--version" && i + 1 < args.length) {
       result.version = args[++i];
+    } else if (arg === "--version") {
+      throw new Error("Flag --version requires a value");
     } else if (arg === "--uninstall") {
       result.uninstall = true;
     } else if (arg === "--hook-mode") {
       result.hookMode = true;
     } else if (arg === "--model" && i + 1 < args.length) {
       result.model = args[++i];
+    } else if (arg === "--model") {
+      throw new Error("Flag --model requires a value");
     } else if (arg === "--type" && i + 1 < args.length) {
       result.type = args[++i];
+    } else if (arg === "--type") {
+      throw new Error("Flag --type requires a value");
     } else if (arg === "--scope" && i + 1 < args.length) {
       result.scope = args[++i];
+    } else if (arg === "--scope") {
+      throw new Error("Flag --scope requires a value");
     } else if (arg === "--exclude" && i + 1 < args.length) {
       const ex = args[++i];
       if (ex) result.exclude.push(ex);
+    } else if (arg === "--exclude") {
+      throw new Error("Flag --exclude requires a value");
     } else if (arg === "--no-color") {
       /* handled in ui.ts via argv / env */
     } else if (arg === "--no-animate") {
@@ -392,6 +412,8 @@ export function parseArgs(args: string[]): ParsedArgs {
         );
       }
       result.boxStyleOverride = v;
+    } else if (arg === "--style") {
+      throw new Error("Flag --style requires a value");
     } else if (arg === "login") {
       result.command = "login";
       subcommandSeen = true;
@@ -427,6 +449,10 @@ export function parseArgs(args: string[]): ParsedArgs {
       subcommandSeen = true;
     } else if (subcommandSeen && !arg.startsWith("-")) {
       result.positionals.push(arg);
+    } else if (arg.startsWith("--")) {
+      throw new Error(`Unknown flag: ${arg}`);
+    } else if (!subcommandSeen) {
+      throw new Error(`Unknown command: ${arg}. Run 'qc --help' for usage.`);
     }
   }
 

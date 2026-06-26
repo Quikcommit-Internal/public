@@ -46,6 +46,7 @@ export class ApiClient {
         Authorization: `Bearer ${this.apiKey}`,
       },
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(30_000),
     });
 
     if (!res.ok) {
@@ -149,6 +150,7 @@ export class ApiClient {
         Authorization: `Bearer ${this.apiKey}`,
       },
       body: options?.body,
+      signal: AbortSignal.timeout(30_000),
     });
     if (!res.ok) {
       const err = (await res.json().catch(() => ({ error: res.statusText }))) as { error?: string };

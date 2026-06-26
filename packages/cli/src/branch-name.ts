@@ -43,7 +43,12 @@ export function sanitizeBranchName(input: string): string | null {
 export function ensureUniqueName(name: string, exists: (candidate: string) => boolean): string {
   if (!exists(name)) return name;
   for (let i = 2; i <= 100; i++) {
-    const candidate = `${name}-${i}`;
+    const suffix = `-${i}`;
+    // Truncate base to leave room for suffix within MAX_BRANCH_NAME_LENGTH
+    const base = name.length + suffix.length > MAX_BRANCH_NAME_LENGTH
+      ? name.slice(0, MAX_BRANCH_NAME_LENGTH - suffix.length)
+      : name;
+    const candidate = `${base}${suffix}`;
     if (!exists(candidate)) return candidate;
   }
   throw new Error(`Could not find a unique name for ${name} after 100 attempts`);

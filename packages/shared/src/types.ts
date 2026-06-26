@@ -165,6 +165,8 @@ export type PlanTier = "free" | "pro" | "team" | "scale";
 export interface BranchRequest {
   diff?: string;
   changes?: string;
+  /** Compact per-file +/- stats from `git diff --stat`. */
+  diff_stat?: string;
   recent_commits?: string[];
   description?: string;
   rules?: CommitRules;

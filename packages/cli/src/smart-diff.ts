@@ -78,7 +78,8 @@ function isMinified(content: string): boolean {
     (l) => (l.startsWith("+") || l.startsWith("-")) && !l.startsWith("+++") && !l.startsWith("---")
   );
   if (lines.length === 0) return false;
-  return lines.some((l) => l.length > 500);
+  const longLines = lines.filter((l) => l.length > 500).length;
+  return longLines > lines.length / 2;
 }
 
 export interface SmartDiffResult {

@@ -54,6 +54,7 @@ export function getStagedDiff(excludes: string[] = []): string {
 export function getStagedFiles(): string {
   return execFileSync("git", ["diff", "--cached", "--name-only"], {
     encoding: "utf-8",
+    maxBuffer: 10 * 1024 * 1024,
   });
 }
 
@@ -92,9 +93,57 @@ export function getAllChangedFiles(): string {
     .join("\n");
 }
 
+/**
+ * Get all changed files with status markers (A/M/D/?) as a newline-separated list.
+ * Example output: "M  src/auth.ts\nD  eslint.config.mjs\n?  oxlint.config.ts"
+ * Used for branch name generation to give the AI richer context about what happened.
+ */
+export function getAllChangedFilesWithStatus(): string {
+  const output = execFileSync("git", ["status", "--porcelain"], {
+    encoding: "utf-8",
+  });
+  return output
+    .trim()
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => {
+      const xy = line.slice(0, 2).trim();
+      const filepath = line.slice(3);
+      // Map porcelain status to human-readable: M=modified, A=added, D=deleted, ?=untracked
+      let status = "M";
+      if (xy === "??") status = "A";          // untracked = new file
+      else if (xy.includes("D")) status = "D";
+      else if (xy.includes("A")) status = "A";
+      else if (xy.includes("R")) status = "R";
+      return `${status}  ${filepath}`;
+    })
+    .join("\n");
+}
+
+/**
+ * Get a compact diff stat summary (per-file +/- line counts) for staged or
+ * working-tree changes. Returns output like "src/auth.ts | 15 +++---" suitable
+ * for giving the AI a bird's-eye view of the change magnitude without sending
+ * the full diff.
+ */
+export function getWorkingDiffStat(staged: boolean): string {
+  const args = staged
+    ? ["diff", "--cached", "--stat=120"]
+    : ["diff", "HEAD", "--stat=120"];
+  try {
+    return execFileSync("git", args, {
+      encoding: "utf-8",
+      maxBuffer: 1024 * 1024,
+    }).trim();
+  } catch {
+    return "";
+  }
+}
+
 export function hasStagedChanges(): boolean {
   const output = execFileSync("git", ["diff", "--cached", "--name-only"], {
     encoding: "utf-8",
+    maxBuffer: 10 * 1024 * 1024,
   });
   return output.trim().length > 0;
 }

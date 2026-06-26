@@ -44,13 +44,13 @@ export function validateBranchName(name: string): boolean {
 // ---------------------------------------------------------------------------
 
 export const TYPE_HINTS: Array<[RegExp, string]> = [
-  [/\btest|spec\b/i, "test"],
-  [/\bdocs?\b|readme|\.md$/i, "docs"],
-  [/\bperf|benchmark/i, "perf"],
+  [/\b(ci|workflow)\b|github\/actions/i, "ci"],
+  [/\b(perf|benchmark)\b/i, "perf"],
   [/\brefactor\b/i, "refactor"],
-  [/\bci|workflow|github\/actions/i, "ci"],
-  [/\bfix|bug|issue/i, "fix"],
-  [/\bfeat|add|new\b/i, "feat"],
+  [/\b(fix|bug|issue|patch)\b/i, "fix"],
+  [/\b(feat|add|new)\b/i, "feat"],
+  [/\b(docs?)\b|\breadme\b/i, "docs"],
+  [/\b(test|spec)\b/i, "test"],
 ];
 
 export function slugifyFilename(path: string): string {
@@ -80,16 +80,60 @@ const NON_CODE_PATTERNS = [
   /\.json$/,
   /\.toml$/,
   /\/\.?config\b/i,
+  /\.config\.[a-z]+$/i,  // root-level config: eslint.config.mjs, vitest.config.ts
   /^\.github\//,
   /^\.vscode\//,
 ];
 
+/** True when the path looks like a test/spec file. */
+function isTestPath(f: string): boolean {
+  return /\.(test|spec)\.[^.]+$/i.test(f) || /^tests?\//i.test(f);
+}
+
 function pickBestFile(files: string[]): string {
-  // Prefer code files (src/, lib/, app/, packages/) over docs/config
   const codeFiles = files.filter(
     (f) => !NON_CODE_PATTERNS.some((rx) => rx.test(f))
   );
-  return codeFiles[0] ?? files[0] ?? "";
+  // Strongly prefer source directories over everything else
+  const srcDirs = codeFiles.filter((f) => /^(src|lib|app|packages)\//.test(f));
+  // Among source dirs, prefer non-test files
+  const nonTestSrc = srcDirs.filter((f) => !isTestPath(f));
+  return nonTestSrc[0] ?? srcDirs[0] ?? codeFiles[0] ?? files[0] ?? "";
+}
+
+/**
+ * Infer branch type from file categories instead of keyword-matching the
+ * concatenated path list (which lets "test" in a path like tests/foo.test.ts
+ * dominate over 30 src/ changes).
+ */
+function inferTypeFromFiles(files: string[]): string {
+  const isNonCode = (f: string) => NON_CODE_PATTERNS.some((rx) => rx.test(f));
+
+  // Exclusive categorization: each file in exactly one bucket, priority order
+  let srcCount = 0, testCount = 0, docCount = 0, ciCount = 0;
+  for (const f of files) {
+    if (/^\.github\//i.test(f)) { ciCount++; }
+    else if (isTestPath(f)) { testCount++; }
+    else if (/^docs?\//i.test(f) || /\.md$/i.test(f) || /^readme/i.test(f)) { docCount++; }
+    else if (!isNonCode(f)) { srcCount++; }
+  }
+
+  // Pure category changes
+  if (srcCount === 0 && testCount > 0 && docCount === 0 && ciCount === 0) return "test";
+  if (srcCount === 0 && docCount > 0 && testCount === 0 && ciCount === 0) return "docs";
+  if (srcCount === 0 && ciCount > 0 && testCount === 0 && docCount === 0) return "ci";
+
+  // Broad source changes → refactor
+  if (srcCount > 10) return "refactor";
+  // Some source changes
+  if (srcCount > 0) return "feat";
+
+  // Mixed non-source: pick dominant category
+  if (testCount >= docCount && testCount >= ciCount) return "test";
+  if (docCount >= ciCount) return "docs";
+  if (ciCount > 0) return "ci";
+
+  return "chore";
 }
 
 export function deterministicBranchName(opts: {
@@ -97,18 +141,19 @@ export function deterministicBranchName(opts: {
   description?: string;
 }): { name: string; type: string; slug: string } {
   const files = opts.files ?? [];
-  // For type detection, prioritize code files over docs/config
-  const codeFiles = files.filter(
-    (f) => !NON_CODE_PATTERNS.some((rx) => rx.test(f))
-  );
-  const haystack = `${opts.description ?? ""} ${(codeFiles.length > 0 ? codeFiles : files).join(" ")}`;
 
   let type = "chore";
-  for (const [rx, t] of TYPE_HINTS) {
-    if (rx.test(haystack)) {
-      type = t;
-      break;
+
+  if (opts.description) {
+    // Description is an intentional signal — apply TYPE_HINTS to it directly
+    for (const [rx, t] of TYPE_HINTS) {
+      if (rx.test(opts.description)) {
+        type = t;
+        break;
+      }
     }
+  } else if (files.length > 0) {
+    type = inferTypeFromFiles(files);
   }
 
   let slug: string;

@@ -19,9 +19,11 @@ import {
   getStagedFiles,
   getWorkingTreeDiff,
   getAllChangedFiles,
+  getAllChangedFilesWithStatus,
   getRecentBranchCommits,
   branchExists,
   createAndCheckoutBranch,
+  getWorkingDiffStat,
 } from "./git.js";
 import { preprocessDiff } from "./smart-diff.js";
 import {
@@ -132,15 +134,24 @@ export async function runBranchGuard(
   // otherwise fall back to unstaged working-tree changes (the user clearly
   // has work-in-progress they want to commit, even if not staged yet).
   let stagedDiff = "";
-  let stagedChanges = "";
+  let plainFiles = "";       // plain file list for deterministic fallback
+  let changesForAI = "";     // status-annotated file list (A/M/D markers) for AI
+  let diffStat = "";
   if (state.mode === "uncommitted") {
     let rawDiff = getStagedDiff(args.excludes ?? []);
-    stagedChanges = getStagedFiles();
-    if (!rawDiff.trim()) {
+    plainFiles = getStagedFiles();
+    changesForAI = plainFiles;
+    const isStaged = !!rawDiff.trim();
+    if (!isStaged) {
       rawDiff = getWorkingTreeDiff(args.excludes ?? []);
-      stagedChanges = getAllChangedFiles();
+      plainFiles = getAllChangedFiles();
+      // Status-annotated list tells the AI which files were added/deleted/modified
+      changesForAI = getAllChangedFilesWithStatus();
     }
     stagedDiff = preprocessDiff(rawDiff).processedDiff;
+    // Compact diff stat gives per-file change magnitude without sending
+    // megabytes of raw diff content.
+    diffStat = getWorkingDiffStat(isStaged);
   }
   const recentCommits =
     state.mode === "rescue" ? getRecentBranchCommits(state.commitsAhead) : undefined;
@@ -161,6 +172,7 @@ export async function runBranchGuard(
     | ((opts: {
         diff?: string;
         changes?: string;
+        diffStat?: string;
         recentCommits?: string[];
         model?: string;
         rules?: { types?: string[] };
@@ -195,9 +207,14 @@ export async function runBranchGuard(
     if (apiKey) {
       const client = new ApiClient({ apiKey });
       try {
+        // For branch naming, limit the diff to 60KB client-side — the file list
+        // and diff_stat carry the important context; sending MB of raw diff is
+        // wasteful and causes the AI worker to blindly truncate anyway.
+        const cappedDiff = stagedDiff ? stagedDiff.slice(0, 60_000) : undefined;
         const branchResult = await client.generateBranchName({
-          diff: stagedDiff || undefined,
-          changes: stagedChanges || undefined,
+          diff: cappedDiff || undefined,
+          changes: changesForAI || undefined,
+          diff_stat: diffStat || undefined,
           recent_commits: recentCommits,
           model: args.model,
           rules: branchRules,
@@ -210,15 +227,16 @@ export async function runBranchGuard(
         const fallbackInput =
           state.mode === "rescue"
             ? { files: [], description: recentCommits?.join(" ") ?? "" }
-            : { files: stagedChanges ? stagedChanges.split("\n").filter(Boolean) : [] };
+            : { files: plainFiles ? plainFiles.split("\n").filter(Boolean) : [] };
         rawName = deterministicBranchName(fallbackInput).name;
         usedFallback = true;
       }
     } else {
       try {
         rawName = await generateLocalBranchNameFn!({
-          diff: stagedDiff || undefined,
-          changes: stagedChanges || undefined,
+          diff: stagedDiff ? stagedDiff.slice(0, 60_000) : undefined,
+          changes: changesForAI || undefined,
+          diffStat: diffStat || undefined,
           recentCommits: recentCommits,
           model: args.model,
           rules: branchRules,
@@ -229,7 +247,7 @@ export async function runBranchGuard(
         const fallbackInput =
           state.mode === "rescue"
             ? { files: [], description: recentCommits?.join(" ") ?? "" }
-            : { files: stagedChanges ? stagedChanges.split("\n").filter(Boolean) : [] };
+            : { files: plainFiles ? plainFiles.split("\n").filter(Boolean) : [] };
         rawName = deterministicBranchName(fallbackInput).name;
         usedFallback = true;
       }

@@ -518,6 +518,7 @@ export interface LocalBranchOpts {
   description?: string;
   diff?: string;
   changes?: string;
+  diffStat?: string;
   recentCommits?: string[];
   model?: string;
   noSwitch?: boolean;
@@ -530,7 +531,7 @@ export interface LocalBranchOpts {
 
 export type LocalBranchGenerateOpts = Pick<
   LocalBranchOpts,
-  "description" | "diff" | "changes" | "recentCommits" | "model" | "rules"
+  "description" | "diff" | "changes" | "diffStat" | "recentCommits" | "model" | "rules"
 >;
 
 /**
@@ -546,6 +547,8 @@ export async function generateLocalBranchName(opts: LocalBranchGenerateOpts): Pr
   sections.push("Generate a git branch name in the format <type>/<kebab-case-slug>.");
   sections.push("Type must be one of: feat, fix, refactor, perf, docs, test, chore, ci.");
   sections.push("Slug: 2-5 words, lowercase, hyphen-separated, max 55 chars.");
+  sections.push("For LARGE changesets: identify the dominant THEME (migration, refactor, feature). Name for the theme, not a single file.");
+  sections.push("Look for DELETED + ADDED files as signals of migration.");
   sections.push("Output ONLY the branch name on a single line. No explanation.");
   sections.push("");
   if (opts.description) {
@@ -554,9 +557,23 @@ export async function generateLocalBranchName(opts: LocalBranchGenerateOpts): Pr
   } else if (opts.recentCommits && opts.recentCommits.length > 0) {
     sections.push("RECENT COMMITS:");
     for (const c of opts.recentCommits) sections.push(`- ${c}`);
-  } else if (opts.diff) {
-    sections.push("DIFF:");
-    sections.push(opts.diff.slice(0, 30_000));
+  } else {
+    // Provide ALL available context — file list first (most compact, most comprehensive)
+    if (opts.changes) {
+      sections.push("FILES CHANGED (PRIMARY signal — complete list):");
+      sections.push(opts.changes.slice(0, 8000));
+      sections.push("");
+    }
+    if (opts.diffStat) {
+      sections.push("CHANGE MAGNITUDE:");
+      sections.push(opts.diffStat.slice(0, 6000));
+      sections.push("");
+    }
+    if (opts.diff) {
+      const budget = opts.diffStat ? 8_000 : 30_000;
+      sections.push("DIFF (supplementary, may be truncated):");
+      sections.push(opts.diff.slice(0, budget));
+    }
   }
   const userContent = sections.join("\n");
 
@@ -597,6 +614,7 @@ export async function generateLocalBranchName(opts: LocalBranchGenerateOpts): Pr
       body = {
         diff: opts.diff,
         changes: opts.changes,
+        diff_stat: opts.diffStat,
         recent_commits: opts.recentCommits,
         description: opts.description,
         model,
@@ -684,6 +702,7 @@ export async function runLocalBranch(opts: LocalBranchOpts): Promise<void> {
       description: opts.description,
       diff: opts.diff,
       changes: opts.changes,
+      diffStat: opts.diffStat,
       recentCommits: opts.recentCommits,
       model: opts.model,
       rules: opts.rules,
