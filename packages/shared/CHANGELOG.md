@@ -1,5 +1,11 @@
 # @quikcommit/shared
 
+## 10.0.0
+
+### Major Changes
+
+- [`b4efd64`](https://github.com/Quikcommit-Internal/quikcommit/commit/b4efd6434171b130f4acc0169c58b0b6a755ae75) - MANY, MANY UPDATES FIXES AND CHANGES
+
 ## 9.0.0
 
 ### Major Changes
