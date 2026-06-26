@@ -1,5 +1,11 @@
 # @quikcommit/cli
 
+## 13.1.0
+
+### Minor Changes
+
+- 11ea4af: Fixes, updates, etc
+
 ## 13.0.0
 
 ### Major Changes

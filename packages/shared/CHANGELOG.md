@@ -1,5 +1,11 @@
 # @quikcommit/shared
 
+## 10.1.0
+
+### Minor Changes
+
+- 11ea4af: Fixes, updates, etc
+
 ## 10.0.0
 
 ### Major Changes
