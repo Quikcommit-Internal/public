@@ -5,6 +5,8 @@ export interface ModelInfo {
   name: string;
   provider: "cloudflare";
   cf_model: string;
+  /** Model's context window size in tokens. Used by AI worker for truncation. */
+  context_window: number;
   tier: "free" | "pro";
   cost_per_commit: number;
   description: string;
@@ -12,45 +14,18 @@ export interface ModelInfo {
 
 export const MODEL_CATALOG: ModelInfo[] = [
   {
-    id: "qwen3-30b",
-    name: "Qwen3 30B",
+    id: "kimi-k2.6",
+    name: "Kimi K2.6",
     provider: "cloudflare",
-    cf_model: "@cf/qwen/qwen3-30b-a3b-fp8",
+    cf_model: "@cf/moonshotai/kimi-k2.6",
+    context_window: 262_144,
     tier: "free",
-    cost_per_commit: 0.000169,
-    description: "Fast, good quality. Default for Free tier.",
-  },
-  {
-    id: "qwen25-coder-32b",
-    name: "Qwen 2.5 Coder 32B",
-    provider: "cloudflare",
-    cf_model: "@cf/qwen/qwen2.5-coder-32b-instruct",
-    tier: "free",
-    cost_per_commit: 0.00152,
-    description: "Best code understanding. Default for Pro+.",
-  },
-  {
-    id: "deepseek-r1-32b",
-    name: "DeepSeek R1 32B",
-    provider: "cloudflare",
-    cf_model: "@cf/deepseek-ai/deepseek-r1-distill-qwen-32b",
-    tier: "pro",
-    cost_per_commit: 0.00197,
-    description: "Reasoning model. Best for complex changes.",
-  },
-  {
-    id: "llama-3.3-70b",
-    name: "Llama 3.3 70B",
-    provider: "cloudflare",
-    cf_model: "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
-    tier: "pro",
-    cost_per_commit: 0.00104,
-    description: "Large model. Strong general understanding.",
+    cost_per_commit: 0.001,
+    description: "1T MoE model. 262K context. Default for all tiers.",
   },
 ];
 
-export const DEFAULT_MODEL_FREE = "qwen3-30b";
-export const DEFAULT_MODEL_PRO = "qwen25-coder-32b";
+export const DEFAULT_MODEL = "kimi-k2.6";
 
 const TIER_ORDER: PlanTier[] = ["free", "pro", "team", "scale"];
 
@@ -64,22 +39,20 @@ export function planMeetsModelTier(
   return planIdx >= modelIdx;
 }
 
-/** Resolve model ID to cf_model, or default based on plan. Validates tier access. */
+/** Resolve model ID to cf_model, or default. Validates tier access. */
 export function resolveModel(
   modelId: string | undefined,
   plan: PlanTier
-): { cf_model: string; model_id: string } | { error: string } {
-  const defaultId =
-    plan === "free" ? DEFAULT_MODEL_FREE : DEFAULT_MODEL_PRO;
-  const id = modelId?.trim() || defaultId;
+): { cf_model: string; model_id: string; context_window: number } | { error: string } {
+  const id = modelId?.trim() || DEFAULT_MODEL;
   const info = MODEL_CATALOG.find((m) => m.id === id);
   if (!info) {
-    return { error: `Unknown model: ${id}` };
+    return { error: `Unknown model: ${id}. Available: ${MODEL_CATALOG.map(m => m.id).join(", ")}` };
   }
   if (!planMeetsModelTier(plan, info.tier)) {
-    return { error: "This model requires Pro plan" };
+    return { error: `Model ${id} requires Pro plan` };
   }
-  return { cf_model: info.cf_model, model_id: info.id };
+  return { cf_model: info.cf_model, model_id: info.id, context_window: info.context_window };
 }
 
 export const PLAN_LIMITS: Record<PlanTier, number> = {

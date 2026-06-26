@@ -164,6 +164,57 @@ export async function runCommit(args: ParsedArgs): Promise<void> {
   const modelDisplay = model ?? "default";
   const uiCtx = buildUIContext(ui, config, args);
   const boxStyle = args.boxStyleOverride ?? config.ui?.box?.style ?? "gradient";
+
+  const t0 = Date.now();
+  let generatedMessage: string;
+  let diagnostics: unknown;
+
+  // Helper: run the chunk-summarize-generate pipeline for large diffs.
+  async function generateViaChunks(): Promise<{ message: string; diagnostics?: unknown }> {
+    const chunks = splitDiffIntoChunks(processedDiff);
+    if (chunks.length === 0) {
+      log.error("No parseable diff content to analyze.");
+      process.exit(1);
+    }
+    if (!silent) log.step(`large diff — analyzing ${chunks.length} chunk(s) in parallel...`);
+
+    const results = await Promise.allSettled(
+      chunks.map((chunk) =>
+        client.summarizeChunk(chunk.diff, chunk.files.filter(Boolean).join("\n") || "unknown", model)
+      )
+    );
+    const summaries: string[] = [];
+    for (const r of results) {
+      if (r.status === "fulfilled" && r.value) {
+        summaries.push(r.value);
+      }
+    }
+    if (summaries.length === 0) {
+      log.error("All chunk summaries failed. Check your connection and try again.");
+      process.exit(1);
+    }
+    if (results.some((r) => r.status === "rejected") && !silent) {
+      const failed = results.filter((r) => r.status === "rejected").length;
+      log.step(`${failed}/${results.length} chunk(s) failed — continuing with partial summaries`);
+    }
+    const combinedSummary = summaries.join("\n\n");
+
+    const finalSpinner = createStageSpinner({
+      stage: "aiGenerate",
+      message: `generating commit from ${chunks.length} summaries (${modelDisplay})...`,
+      ...uiCtx,
+    });
+    if (!silent) finalSpinner.start();
+    try {
+      const result = await client.generateCommit(
+        combinedSummary, changes, rules, model, recentCommits, generationHints
+      );
+      return result;
+    } finally {
+      finalSpinner.stop();
+    }
+  }
+
   const spinner = createStageSpinner({
     stage: "aiGenerate",
     message: needsChunking
@@ -173,69 +224,27 @@ export async function runCommit(args: ParsedArgs): Promise<void> {
   });
   if (!silent) spinner.start();
 
-  const t0 = Date.now();
-  let generatedMessage: string;
-  let diagnostics: unknown;
   try {
     if (needsChunking) {
-      const chunks = splitDiffIntoChunks(processedDiff);
-      if (chunks.length === 0) {
-        spinner.stop();
-        log.error("No parseable diff content to analyze.");
-        process.exit(1);
-      }
       spinner.stop();
-      if (!silent) log.step(`large diff — analyzing ${chunks.length} chunk(s) in parallel...`);
-
-      // Fix #5: Use allSettled so a single chunk failure doesn't abort everything
-      const results = await Promise.allSettled(
-        chunks.map((chunk) =>
-          client.summarizeChunk(chunk.diff, chunk.files.filter(Boolean).join("\n") || "unknown", model)
-        )
-      );
-      const summaries: string[] = [];
-      for (const r of results) {
-        if (r.status === "fulfilled" && r.value) {
-          summaries.push(r.value);
-        }
-      }
-      if (summaries.length === 0) {
-        log.error("All chunk summaries failed. Check your connection and try again.");
-        process.exit(1);
-      }
-      if (results.some((r) => r.status === "rejected") && !silent) {
-        const failed = results.filter((r) => r.status === "rejected").length;
-        log.step(`${failed}/${results.length} chunk(s) failed — continuing with partial summaries`);
-      }
-      const combinedSummary = summaries.join("\n\n");
-
-      const finalSpinner = createStageSpinner({
-        stage: "aiGenerate",
-        message: `generating commit from ${chunks.length} summaries (${modelDisplay})...`,
-        ...uiCtx,
-      });
-      if (!silent) finalSpinner.start();
+      ({ message: generatedMessage, diagnostics } = await generateViaChunks());
+    } else {
       try {
         ({ message: generatedMessage, diagnostics } = await client.generateCommit(
-          combinedSummary,
-          changes,
-          rules,
-          model,
-          recentCommits,
-          generationHints
+          processedDiff, changes, rules, model, recentCommits, generationHints
         ));
-      } finally {
-        finalSpinner.stop();
+      } catch (err) {
+        // If the direct call fails with a 413 (diff too large), automatically
+        // fall back to the chunking pipeline instead of dying with an error.
+        const is413 = err instanceof Error && /too large/i.test(err.message);
+        if (is413) {
+          spinner.stop();
+          if (!silent) log.step("diff too large for single request — switching to chunk mode...");
+          ({ message: generatedMessage, diagnostics } = await generateViaChunks());
+        } else {
+          throw err;
+        }
       }
-    } else {
-      ({ message: generatedMessage, diagnostics } = await client.generateCommit(
-        processedDiff,
-        changes,
-        rules,
-        model,
-        recentCommits,
-        generationHints
-      ));
     }
   } finally {
     spinner.stop();
