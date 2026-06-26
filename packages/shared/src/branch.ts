@@ -11,7 +11,7 @@ export const BRANCH_NAME_RX =
   /^(feat|fix|refactor|perf|docs|test|chore|ci)\/[a-z0-9][a-z0-9-]{0,51}$/;
 
 export const PROTECTED_BRANCH_RX =
-  /(^|[/-])(main|master|develop|trunk|release)([/-]|$)/i;
+  /(^|\/)(main|master|develop|trunk|release)(\/|$)/i;
 
 export const MAX_BRANCH_NAME_LENGTH = 60;
 

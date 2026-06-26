@@ -14,8 +14,8 @@ describe("validateBranchName", () => {
     expect(validateBranchName("feat/OAuth")).toBe(false);
   });
 
-  it("rejects names with main in slug", () => {
-    expect(validateBranchName("feat/main-update")).toBe(false);
+  it("allows main as part of slug", () => {
+    expect(validateBranchName("feat/main-update")).toBe(true);
   });
 
   it("rejects names exceeding 60 chars", () => {

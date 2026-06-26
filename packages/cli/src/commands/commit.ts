@@ -142,8 +142,13 @@ export async function runCommit(args: ParsedArgs): Promise<void> {
         if (intersected.length > 0) rules = { ...rules, scopes: intersected };
       }
     }
-  } catch {
-    // Not in a team or API error
+  } catch (err) {
+    // Not in a team — expected for solo users; no noise needed.
+    // But log a dim hint so team users can spot API issues.
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg && !/not found|404|403/i.test(msg)) {
+      log.dim('⚠ could not fetch team rules: ' + msg.slice(0, 80));
+    }
   }
 
   rules = applyCliTypeScopeToRules(rules, args.type, args.scope);
