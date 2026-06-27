@@ -14,18 +14,59 @@ export interface ModelInfo {
 
 export const MODEL_CATALOG: ModelInfo[] = [
   {
+    id: "qwen3-30b",
+    name: "Qwen3 30B",
+    provider: "cloudflare",
+    cf_model: "@cf/qwen/qwen3-30b-a3b-fp8",
+    context_window: 32_768,
+    tier: "free",
+    cost_per_commit: 0.000169,
+    description: "Fast, good quality. Default for Free tier.",
+  },
+  {
+    id: "qwen25-coder-32b",
+    name: "Qwen 2.5 Coder 32B",
+    provider: "cloudflare",
+    cf_model: "@cf/qwen/qwen2.5-coder-32b-instruct",
+    context_window: 32_768,
+    tier: "free",
+    cost_per_commit: 0.00152,
+    description: "Best code understanding. Default for Pro+.",
+  },
+  {
+    id: "deepseek-r1-32b",
+    name: "DeepSeek R1 32B",
+    provider: "cloudflare",
+    cf_model: "@cf/deepseek-ai/deepseek-r1-distill-qwen-32b",
+    context_window: 32_768,
+    tier: "pro",
+    cost_per_commit: 0.00197,
+    description: "Reasoning model. Best for complex changes.",
+  },
+  {
+    id: "llama-3.3-70b",
+    name: "Llama 3.3 70B",
+    provider: "cloudflare",
+    cf_model: "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+    context_window: 128_000,
+    tier: "pro",
+    cost_per_commit: 0.00104,
+    description: "Large model. Strong general understanding.",
+  },
+  {
     id: "kimi-k2.6",
     name: "Kimi K2.6",
     provider: "cloudflare",
     cf_model: "@cf/moonshotai/kimi-k2.6",
     context_window: 262_144,
-    tier: "free",
+    tier: "pro",
     cost_per_commit: 0.001,
-    description: "1T MoE model. 262K context. Default for all tiers.",
+    description: "1T MoE model. 262K context window.",
   },
 ];
 
-export const DEFAULT_MODEL = "kimi-k2.6";
+export const DEFAULT_MODEL = "qwen3-30b";
+export const DEFAULT_MODEL_PRO = "qwen25-coder-32b";
 
 const TIER_ORDER: PlanTier[] = ["free", "pro", "team", "scale"];
 
@@ -44,7 +85,8 @@ export function resolveModel(
   modelId: string | undefined,
   plan: PlanTier
 ): { cf_model: string; model_id: string; context_window: number } | { error: string } {
-  const id = modelId?.trim() || DEFAULT_MODEL;
+  const defaultId = plan === "free" ? DEFAULT_MODEL : DEFAULT_MODEL_PRO;
+  const id = modelId?.trim() || defaultId;
   const info = MODEL_CATALOG.find((m) => m.id === id);
   if (!info) {
     return { error: `Unknown model: ${id}. Available: ${MODEL_CATALOG.map(m => m.id).join(", ")}` };

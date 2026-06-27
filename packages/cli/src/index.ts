@@ -614,14 +614,19 @@ async function main(): Promise<void> {
     return;
   }
 
+  // Local mode: explicit flag OR configured local provider takes priority over SaaS.
+  // This prevents sending local model names (e.g. "default") to the SaaS gateway.
   if (values.local) {
+    // Explicit --local / --use-ollama / etc — lazy import justified: avoids loading
+    // 737-line local.ts when user is in SaaS mode (majority case).
     const { runLocalCommit } = await import("./local.js");
     await runLocalCommit(values);
     return;
   }
 
-  const apiKeyToUse = apiKey ?? getApiKey();
-  if (!apiKeyToUse) {
+  {
+    // Auto-detect: if a local provider is configured, use it even if logged in to SaaS.
+    // Lazy import justified: same reason — skip loading local.ts for SaaS-only users.
     const { getLocalProviderConfig } = await import("./local.js");
     if (getLocalProviderConfig()) {
       const { runLocalCommit } = await import("./local.js");
@@ -630,6 +635,7 @@ async function main(): Promise<void> {
     }
   }
 
+  // SaaS mode — no local provider configured.
   const { runCommit } = await import("./commands/commit.js");
   await runCommit(values);
 }
