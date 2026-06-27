@@ -1,4 +1,4 @@
-import { getApiKey, getConfig, saveConfig } from "./config.js";
+import { getConfig, saveConfig } from "./config.js";
 
 const HELP = `Quikcommit - AI-powered conventional commit messages
 

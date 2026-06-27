@@ -52,12 +52,34 @@ function setConfig(key: string, value: string): void {
   if (key === "model") {
     updates.model = value;
   } else if (key === "provider") {
-    const valid = ["ollama", "lmstudio", "openrouter", "custom", "cloudflare"];
-    if (!valid.includes(value.toLowerCase())) {
-      console.error(`Invalid provider. Must be one of: ${valid.join(", ")}`);
+    const v = value.toLowerCase();
+    // "cloud" clears local provider config → uses Cloudflare SaaS
+    if (v === "cloud" || v === "cloudflare-saas") {
+      const { provider: _, apiUrl: __, model: ___, ...rest } = cfg;
+      saveConfig(rest);
+      console.log("Switched to Cloudflare SaaS (default).");
+      return;
+    }
+    // Local providers — set URL + model defaults automatically
+    const providers: Record<string, { provider: LocalConfig["provider"]; apiUrl: string; model: string }> = {
+      ollama:     { provider: "ollama",     apiUrl: "http://localhost:11434",       model: "codellama" },
+      lmstudio:   { provider: "lmstudio",   apiUrl: "http://localhost:1234/v1",     model: "default" },
+      openrouter: { provider: "openrouter", apiUrl: "https://openrouter.ai/api/v1", model: "google/gemini-flash-1.5-8b" },
+      custom:     { provider: "custom",     apiUrl: cfg.apiUrl ?? "",               model: cfg.model ?? "" },
+      cloudflare: { provider: "cloudflare", apiUrl: cfg.apiUrl ?? "",               model: "@cf/qwen/qwen2.5-coder-32b-instruct" },
+    };
+    const preset = providers[v];
+    if (!preset) {
+      console.error(`Unknown provider: ${v}`);
+      console.error("  Options: cloud, ollama, lmstudio, openrouter, custom, cloudflare");
       process.exit(1);
     }
-    updates.provider = value.toLowerCase() as LocalConfig["provider"];
+    saveConfig({ ...cfg, ...preset });
+    console.log(`Provider set to ${preset.provider} (${preset.apiUrl || "set api_url next"}).`);
+    if (v === "cloudflare" && !cfg.apiUrl) {
+      console.log("  Next: qc config set api_url https://your-worker.workers.dev");
+    }
+    return;
   } else if (key === "api_url") {
     try {
       new URL(value);
