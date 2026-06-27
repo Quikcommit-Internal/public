@@ -93,6 +93,14 @@ export async function runCommit(args: ParsedArgs): Promise<void> {
     }
     process.exit(1);
   }
+  // If a local provider is configured, use it instead of SaaS — even if logged in.
+  // This prevents sending local model names (e.g. "default") to the SaaS gateway.
+  // Lazy import justified: avoids loading 737-line local.ts when user is in SaaS mode.
+  const { getLocalProviderConfig, runLocalCommit } = await import("../local.js");
+  if (getLocalProviderConfig()) {
+    await runLocalCommit(args);
+    return;
+  }
 
   const apiKey = apiKeyFlag ?? getApiKey();
   if (!apiKey) {
