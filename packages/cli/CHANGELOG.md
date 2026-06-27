@@ -1,5 +1,11 @@
 # @quikcommit/cli
 
+## 13.2.0
+
+### Minor Changes
+
+- 4c4aa44: Allow local models
+
 ## 13.1.0
 
 ### Minor Changes
