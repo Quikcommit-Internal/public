@@ -1,5 +1,11 @@
 # @quikcommit/cli
 
+## 13.3.0
+
+### Minor Changes
+
+- 81ffa8b: Added better provider switching and the like
+
 ## 13.2.0
 
 ### Minor Changes
