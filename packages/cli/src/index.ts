@@ -42,6 +42,15 @@ Commit flags:
   --allow-protected     Bypass protected-branch guard
   --auto-branch         Auto-create branch (no prompt) when on protected branch
 
+Provider setup:
+  qc config set provider cloud       Switch to Cloudflare SaaS (default)
+  qc config set provider ollama      Use local Ollama
+  qc config set provider lmstudio    Use local LM Studio
+  qc config set provider openrouter  Use OpenRouter API
+  --use-ollama          One-time setup: save Ollama as provider
+  --use-lmstudio        One-time setup: save LM Studio as provider
+  --use-openrouter      One-time setup: save OpenRouter as provider
+
 Compose short flags: qc -ap (stage all + push), qc -apv (+ verbose)
 
 Examples:
@@ -52,6 +61,8 @@ Examples:
   qc -n                 # preview without committing
   qc -e "*.lock"       # exclude lock files
   qc -t fix -S auth    # force type and scope
+  qc config set provider lmstudio   # switch to LM Studio
+  qc config set provider cloud      # switch back to Cloudflare
 `;
 
 const HELP_PR = `qc pr — Generate a PR description from branch commits
